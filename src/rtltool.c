@@ -206,7 +206,7 @@ int rtltool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                         return -EPERM;
 
                 spin_lock_irqsave(&tp->phy_lock, flags);
-                rtl_eeprom_write_sc(tp->mmio_addr, my_cmd.offset, my_cmd.data);
+                rtl_eeprom_write_sc(tp, my_cmd.offset, my_cmd.data);
                 spin_unlock_irqrestore(&tp->phy_lock, flags);
                 break;
 

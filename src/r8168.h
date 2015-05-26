@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2014 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2015 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -33,6 +33,10 @@
 
 #include "r8168_dash.h"
 #include "r8168_realwow.h"
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,37)
+#define ENABLE_R8168_PROCFS
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
 #define NETIF_F_HW_VLAN_RX	NETIF_F_HW_VLAN_CTAG_RX
@@ -137,12 +141,12 @@
 #define NAPI_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.039.00" NAPI_SUFFIX
+#define RTL8168_VERSION "8.040.00" NAPI_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2014  Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2015  Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -206,12 +210,13 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define RxEarly_off_V2 (1 << 11)
 #define Rx_Single_fetch_V2 (1 << 14)
 
-#define R8168_REGS_SIZE     256
+#define R8168_REGS_SIZE     (256)
+#define R8168_MAC_REGS_SIZE     (256)
+#define R8168_PHY_REGS_SIZE     (16*2)
+#define R8168_EPHY_REGS_SIZE  	(31*2)
+#define R8168_ERI_REGS_SIZE  	(0x100)
+#define R8168_REGS_DUMP_SIZE     (0x400)
 #define R8168_NAPI_WEIGHT   64
-
-#define RX_BUF_SIZE 0x05F3  /* 0x05F3 = 1522bye + 1 */
-#define R8168_TX_RING_BYTES (NUM_TX_DESC * sizeof(struct TxDesc))
-#define R8168_RX_RING_BYTES (NUM_RX_DESC * sizeof(struct RxDesc))
 
 #define RTL8168_TX_TIMEOUT  (6 * HZ)
 #define RTL8168_LINK_TIMEOUT    (1 * HZ)
@@ -219,6 +224,10 @@ This is free software, and you are welcome to redistribute it under certain cond
 
 #define NUM_TX_DESC 1024    /* Number of Tx descriptor registers */
 #define NUM_RX_DESC 1024    /* Number of Rx descriptor registers */
+
+#define RX_BUF_SIZE 0x05F3  /* 0x05F3 = 1522bye + 1 */
+#define R8168_TX_RING_BYTES (NUM_TX_DESC * sizeof(struct TxDesc))
+#define R8168_RX_RING_BYTES (NUM_RX_DESC * sizeof(struct RxDesc))
 
 #define NODE_ADDRESS_SIZE 6
 
@@ -313,6 +322,7 @@ typedef int *napi_budget;
 #define napi dev
 #define RTL_NAPI_CONFIG(ndev, priv, function, weig) ndev->poll=function;    \
                                 ndev->weight=weig;
+#define RTL_NAPI_DEL(priv)
 #define RTL_NAPI_QUOTA(budget, ndev)            min(*budget, ndev->quota)
 #define RTL_GET_PRIV(stuct_ptr, priv_struct)        netdev_priv(stuct_ptr)
 #define RTL_GET_NETDEV(priv_ptr)
@@ -331,6 +341,7 @@ typedef struct napi_struct *napi_ptr;
 typedef int napi_budget;
 
 #define RTL_NAPI_CONFIG(ndev, priv, function, weight)   netif_napi_add(ndev, &priv->napi, function, weight)
+#define RTL_NAPI_DEL(priv)   netif_napi_del(&priv->napi)
 #define RTL_NAPI_QUOTA(budget, ndev)            min(budget, budget)
 #define RTL_GET_PRIV(stuct_ptr, priv_struct)        container_of(stuct_ptr, priv_struct, stuct_ptr)
 #define RTL_GET_NETDEV(priv_ptr)            struct net_device *dev = priv_ptr->dev;
@@ -1177,8 +1188,10 @@ enum bits {
 };
 
 enum effuse {
-        EFUSE_SUPPORT = 1,
         EFUSE_NOT_SUPPORT = 0,
+        EFUSE_SUPPORT_V1,
+        EFUSE_SUPPORT_V2,
+        EFUSE_SUPPORT_V3,
 };
 #define RsvdMask    0x3fffc000
 
@@ -1270,7 +1283,7 @@ struct rtl8168_private {
 #endif
         u8  wol_enabled;
         u32 wol_opts;
-        u8  efuse;
+        u8  efuse_ver;
         u8  eeprom_type;
         u8  autoneg;
         u8  duplex;
@@ -1306,6 +1319,9 @@ struct rtl8168_private {
         u8  NotWrMcuPatchCode;
         u8  HwHasWrRamCodeToMicroP;
 
+        u16 sw_ram_code_ver;
+        u16 hw_ram_code_ver;
+
         u8 rtk_enable_diag;
 
         u8 ShortPacketSwChecksum;
@@ -1322,6 +1338,8 @@ struct rtl8168_private {
         u16 SwrCnt1msIni;
 
         u8 HwSuppNowIsOobVer;
+
+        u8 RequiredSecLanDonglePatch;
 
         //Dash+++++++++++++++++
         u8 HwSuppDashVer;
@@ -1389,7 +1407,7 @@ struct rtl8168_private {
         //Dash-----------------
 #endif //ENABLE_DASH_SUPPORT
 
-//Realwow++++++++++++++
+        //Realwow++++++++++++++
         u8 HwSuppKCPOffloadVer;
 
         u8 EnableDhcpTimeoutWake;
@@ -1399,7 +1417,12 @@ struct rtl8168_private {
         u32 DhcpTimeout;
         MP_KCP_INFO MpKCPInfo;
         //Realwow--------------
-#endif //ENABLE_REALWOW_SUPPORT	
+#endif //ENABLE_REALWOW_SUPPORT
+
+#ifdef ENABLE_R8168_PROCFS
+        //Procfs support
+        struct proc_dir_entry *proc_dir;
+#endif
 };
 
 enum eetype {
@@ -1461,6 +1484,9 @@ enum mcfg {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_26 (0x0012)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_28 (0x0010)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0018)
+
+//hwoptimize
+#define HW_PATCH_SAMSUNG_LAN_DONGLE (BIT_2)
 
 void mdio_write(struct rtl8168_private *tp, u32 RegAddr, u32 value);
 void mdio_prot_write(struct rtl8168_private *tp, u32 RegAddr, u32 value);
