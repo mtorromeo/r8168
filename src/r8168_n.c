@@ -297,7 +297,7 @@ static struct pci_device_id rtl8168_pci_tbl[] = {
 
 MODULE_DEVICE_TABLE(pci, rtl8168_pci_tbl);
 
-static int rx_copybreak = 200;
+static int rx_copybreak = 0;
 static int timer_count = 0x2600;
 
 static struct {
@@ -3241,9 +3241,11 @@ rtl8168_init_pci_offset_99(struct rtl8168_private *tp)
 
         switch (tp->mcfg) {
         case CFG_METHOD_26:
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x5C2, 1, ERIAR_ExGMAC);
-                csi_tmp &= ~BIT_1;
-                rtl8168_eri_write(ioaddr, 0x5C2, 1, csi_tmp, ERIAR_ExGMAC);
+                if (tp->org_pci_offset_99 & BIT_2) {
+                        csi_tmp = rtl8168_eri_read(ioaddr, 0x5C2, 1, ERIAR_ExGMAC);
+                        csi_tmp &= ~BIT_1;
+                        rtl8168_eri_write(ioaddr, 0x5C2, 1, csi_tmp, ERIAR_ExGMAC);
+                }
                 break;
         }
 
@@ -3272,9 +3274,19 @@ rtl8168_init_pci_offset_99(struct rtl8168_private *tp)
 
         switch (tp->mcfg) {
         case CFG_METHOD_26:
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x5C8, 1, ERIAR_ExGMAC);
-                csi_tmp |= BIT_0;
-                rtl8168_eri_write(ioaddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
+                rtl8168_eri_write(ioaddr, 0x5C0, 1, 0xFA, ERIAR_ExGMAC);
+                break;
+        }
+
+        switch (tp->mcfg) {
+        case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+                if (tp->org_pci_offset_99 & BIT_2) {
+                        csi_tmp = rtl8168_eri_read(ioaddr, 0x5C8, 1, ERIAR_ExGMAC);
+                        csi_tmp |= BIT_0;
+                        rtl8168_eri_write(ioaddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
+                }
                 break;
         }
 
@@ -3306,18 +3318,6 @@ rtl8168_init_pci_offset_99(struct rtl8168_private *tp)
         }
 
         switch (tp->mcfg) {
-        case CFG_METHOD_26:
-        case CFG_METHOD_29:
-        case CFG_METHOD_30:
-                RTL_W8(0xB6, RTL_R8(0xB6) | BIT_0);
-
-                csi_tmp = rtl8168_eri_read(ioaddr, 0x5C8, 1, ERIAR_ExGMAC);
-                csi_tmp |= BIT_0;
-                rtl8168_eri_write(ioaddr, 0x5C8, 1, csi_tmp, ERIAR_ExGMAC);
-                break;
-        }
-
-        switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
         case CFG_METHOD_24:
@@ -3328,6 +3328,15 @@ rtl8168_init_pci_offset_99(struct rtl8168_private *tp)
                 csi_tmp = rtl8168_eri_read(ioaddr, 0x3FA, 2, ERIAR_ExGMAC);
                 csi_tmp |= BIT_14;
                 rtl8168_eri_write(ioaddr, 0x3FA, 2, csi_tmp, ERIAR_ExGMAC);
+                break;
+        }
+
+        switch (tp->mcfg) {
+        case CFG_METHOD_26:
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+                if (tp->org_pci_offset_99 & BIT_2)
+                        RTL_W8(0xB6, RTL_R8(0xB6) | BIT_0);
                 break;
         }
 
@@ -4841,7 +4850,7 @@ static int rtl8168_enable_EEE(struct rtl8168_private *tp)
         case CFG_METHOD_28:
                 OOB_mutex_lock(tp);
                 data = mac_ocp_read(tp, 0xE052);
-                data |= BIT_0;
+                data &= ~BIT_0;
                 mac_ocp_write(tp, 0xE052, data);
                 OOB_mutex_unlock(tp);
                 data = mac_ocp_read(tp, 0xE056);
@@ -4861,7 +4870,8 @@ static int rtl8168_enable_EEE(struct rtl8168_private *tp)
                 mdio_write(tp, 0x10, data);
 
                 mdio_write(tp, 0x1F, 0x0A44);
-                data = mdio_read( tp, 0x11 ) | BIT_12 | BIT_13| BIT_14;
+                data = mdio_read(tp, 0x11) | BIT_13 | BIT_14;
+                data &= ~(BIT_12);
                 mdio_write(tp, 0x11, data);
                 spin_unlock_irqrestore(&tp->phy_lock, flags);
                 break;
@@ -5091,7 +5101,7 @@ static int rtl8168_disable_EEE(struct rtl8168_private *tp)
                 mdio_write(tp, 0x10, data);
 
                 mdio_write(tp, 0x1F, 0x0A44);
-                data = mdio_read( tp, 0x11 ) & ~(BIT_12 | BIT_13 | BIT_14);
+                data = mdio_read(tp, 0x11) & ~(BIT_12 | BIT_13 | BIT_14);
                 mdio_write(tp, 0x11, data);
                 spin_unlock_irqrestore(&tp->phy_lock, flags);
                 break;
@@ -5683,6 +5693,8 @@ rtl8168_exit_oob(struct net_device *dev)
         struct rtl8168_private *tp = netdev_priv(dev);
         void __iomem *ioaddr = tp->mmio_addr;
         u16 data16;
+
+        RTL_W32(RxConfig, RTL_R32(RxConfig) & ~(AcceptErr | AcceptRunt | AcceptBroadcast | AcceptMulticast | AcceptMyPhys |  AcceptAllPhys));
 
         switch (tp->mcfg) {
         case CFG_METHOD_23:
@@ -6767,6 +6779,8 @@ rtl8168_hw_mac_mcu_config(struct net_device *dev)
                 mac_ocp_write(tp, 0xFC2A, 0x0210);
                 mac_ocp_write(tp, 0xFC2C, 0x1A04);
                 mac_ocp_write(tp, 0xFC2E, 0x0B26);
+                mac_ocp_write(tp, 0xFC30, 0x0F02);
+                mac_ocp_write(tp, 0xFC32, 0x0CA0);
 
                 mac_ocp_write(tp, 0xFC38, 0x003F);
         }
@@ -7122,7 +7136,7 @@ rtl8168_hw_ephy_config(struct net_device *dev)
                                        (BIT_13 | BIT_12 | BIT_10 | BIT_9 | BIT_8 | BIT_7 | BIT_6 | BIT_4),
                                        (BIT_5 | BIT_11)
                                      );
-                ClearPCIePhyBit(tp, 0x1E, BIT_0);
+                SetPCIePhyBit(tp, 0x1E, BIT_0);
                 ClearPCIePhyBit(tp, 0x19, BIT_15);
 
                 ClearPCIePhyBit(tp, 0x19, (BIT_5 | BIT_0));
@@ -22105,7 +22119,7 @@ rtl8168_init_board(struct pci_dev *pdev,
         tp->msg_enable = netif_msg_init(debug.msg_enable, R8168_MSG_DEFAULT);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,26)
-        if (!aspm)
+        if (!aspm || tp->mcfg == CFG_METHOD_9)
                 pci_disable_link_state(pdev, PCIE_LINK_STATE_L0S | PCIE_LINK_STATE_L1 |
                                        PCIE_LINK_STATE_CLKPM);
 #endif
@@ -22575,6 +22589,7 @@ rtl8168_init_one(struct pci_dev *pdev,
 #ifdef  CONFIG_R8168_NAPI
                 RTL_NAPI_DEL(tp);
 #endif
+                rtl8168_disable_msi(pdev, tp);
                 rtl8168_release_board(pdev, dev, ioaddr);
                 return rc;
         }
@@ -22794,10 +22809,10 @@ rtl8168_dsm(struct net_device *dev, int dev_state)
         }
 
 }
+
 static void
 set_offset70F(struct rtl8168_private *tp, u8 setting)
 {
-
         u32 csi_tmp;
         u32 temp = (u32)setting;
         temp = temp << 24;
@@ -22821,6 +22836,19 @@ set_offset79(struct rtl8168_private *tp, u8 setting)
         device_control |= setting;
         pci_write_config_byte(pdev, 0x79, device_control);
 
+}
+
+static void
+set_offset711(struct rtl8168_private *tp, u8 setting)
+{
+        u32 csi_tmp;
+        u32 temp = (u32)setting;
+	temp &= 0x0f;
+        temp = temp << 12;
+        /*set PCI configuration space offset 0x711 to setting*/
+
+        csi_tmp = rtl8168_csi_read(tp, 0x710) & 0xffff0fff;
+        rtl8168_csi_write(tp, 0x710, csi_tmp | temp);
 }
 
 static void
@@ -23433,6 +23461,8 @@ rtl8168_hw_config(struct net_device *dev)
                    tp->mcfg == CFG_METHOD_30) {
                 set_offset70F(tp, 0x17);
                 set_offset79(tp, 0x50);
+                if (tp->mcfg == CFG_METHOD_21 || tp->mcfg == CFG_METHOD_22)
+                        set_offset711(tp, 0x04);
 
                 rtl8168_eri_write(ioaddr, 0xC8, 4, 0x00080002, ERIAR_ExGMAC);
                 rtl8168_eri_write(ioaddr, 0xCC, 1, 0x38, ERIAR_ExGMAC);
@@ -23740,6 +23770,13 @@ rtl8168_hw_config(struct net_device *dev)
         }
 
         rtl8168_hw_clear_timer_int(dev);
+
+        switch (tp->mcfg) {
+        case CFG_METHOD_29:
+        case CFG_METHOD_30:
+                mac_ocp_write(tp, 0xE098, 0x0AA2);
+                break;
+        }
 
         switch (tp->mcfg) {
         case CFG_METHOD_21:
