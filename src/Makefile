@@ -65,7 +65,10 @@ else
 	BASEDIR := /lib/modules/$(shell uname -r)
 	KERNELDIR ?= $(BASEDIR)/build
 	PWD :=$(shell pwd)
-	DRIVERDIR := $(shell find $(BASEDIR)/kernel/drivers/net -name realtek -type d)
+	DRIVERDIR := $(shell find $(BASEDIR)/kernel/drivers/net/ethernet -name realtek -type d)
+	ifeq ($(DRIVERDIR),)
+		DRIVERDIR := $(shell find $(BASEDIR)/kernel/drivers/net -name realtek -type d)
+	endif
 	ifeq ($(DRIVERDIR),)
 		DRIVERDIR := $(BASEDIR)/kernel/drivers/net
 	endif

@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2015 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2016 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -34,6 +34,24 @@
 #include "r8168_dash.h"
 #include "r8168_realwow.h"
 
+#define RTL_ALLOC_SKB(tp, length) dev_alloc_skb(length)
+#ifdef CONFIG_R8168_NAPI
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0)
+#undef RTL_ALLOC_SKB
+#define RTL_ALLOC_SKB(tp, length) napi_alloc_skb(&tp->napi, length)
+#endif
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
+#define netdev_features_t  u32
+#endif
+#endif
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,5,0)
+#define NETIF_F_ALL_CSUM        NETIF_F_CSUM_MASK
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,37)
 #define ENABLE_R8168_PROCFS
 #endif
@@ -58,6 +76,14 @@
 #define IRQ_HANDLED    1
 #define IRQ_NONE   0
 #define IRQ_RETVAL(x)
+#endif
+
+#ifndef NETIF_F_RXALL
+#define NETIF_F_RXALL  0
+#endif
+
+#ifndef NETIF_F_RXFCS
+#define NETIF_F_RXFCS  0
 #endif
 
 #ifndef HAVE_FREE_NETDEV
@@ -141,12 +167,12 @@
 #define NAPI_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.041.00" NAPI_SUFFIX
+#define RTL8168_VERSION "8.042.00" NAPI_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2015  Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2016  Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -216,6 +242,7 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define R8168_EPHY_REGS_SIZE  	(31*2)
 #define R8168_ERI_REGS_SIZE  	(0x100)
 #define R8168_REGS_DUMP_SIZE     (0x400)
+#define R8168_PCI_REGS_SIZE  	(0x100)
 #define R8168_NAPI_WEIGHT   64
 
 #define RTL8168_TX_TIMEOUT  (6 * HZ)
@@ -1016,6 +1043,8 @@ enum RTL8168_register_content {
         Fix_Nak_2 = (1 << 3),
         DBGPIN_E2 = (1 << 0),
 
+        /* ResetCounterCommand */
+        CounterReset = 0x1,
         /* DumpCounterCommand */
         CounterDump = 0x8,
 
@@ -1101,6 +1130,8 @@ enum _DescStatusBit {
         /* Tx private */
         /*------ offset 0 of tx descriptor ------*/
         LargeSend   = (1 << 27), /* TCP Large Send Offload (TSO) */
+        GiantSendv4 = (1 << 26), /* TCP Giant Send Offload V4 (GSOv4) */
+        GiantSendv6 = (1 << 25), /* TCP Giant Send Offload V6 (GSOv6) */
         LargeSend_DP = (1 << 16), /* TCP Large Send Offload (TSO) */
         MSSShift    = 16,        /* MSS value position */
         MSSMask     = 0x7FFU,    /* MSS value 11 bits */
@@ -1113,6 +1144,7 @@ enum _DescStatusBit {
         TxUDPCS_C   = (1 << 31), /* Calculate UDP/IP checksum */
         TxTCPCS_C   = (1 << 30), /* Calculate TCP/IP checksum */
         TxIPCS_C    = (1 << 29), /* Calculate IP checksum */
+        TxIPV6F_C   = (1 << 28), /* Indicate it is an IPv6 packet */
         /*@@@@@@ offset 4 of tx descriptor => bits for RTL8168C/CP only     end @@@@@@*/
 
 
@@ -1249,6 +1281,7 @@ struct rtl8168_private {
         u32 tx_tcp_csum_cmd;
         u32 tx_udp_csum_cmd;
         u32 tx_ip_csum_cmd;
+        u32 tx_ipv6_csum_cmd;
         int max_jumbo_frame_size;
         int chipset;
         u32 mcfg;
@@ -1467,6 +1500,21 @@ enum mcfg {
         CFG_METHOD_DEFAULT = 0xFF
 };
 
+#define LSO_32K 32000
+#define LSO_64K 64000
+
+#define NIC_MIN_PHYS_BUF_COUNT          (2)
+#define NIC_MAX_PHYS_BUF_COUNT_LSO_64K  (24)
+#define NIC_MAX_PHYS_BUF_COUNT_LSO2     (16*4)
+
+#define GTTCPHO_SHIFT                   18
+#define GTTCPHO_MAX                     0x7fU
+#define GTPKTSIZE_MAX                   0x3ffffU
+#define TCPHO_SHIFT                     18
+#define TCPHO_MAX                       0x3ffU
+#define LSOPKTSIZE_MAX                  0xffffU
+#define MSS_MAX                         0x07ffu /* MSS value */
+
 #define OOB_CMD_RESET       0x00
 #define OOB_CMD_DRIVER_START    0x05
 #define OOB_CMD_DRIVER_STOP 0x06
@@ -1486,6 +1534,7 @@ enum mcfg {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0018)
 
 //hwoptimize
+#define HW_PATCH_SOC_LAN (BIT_0)
 #define HW_PATCH_SAMSUNG_LAN_DONGLE (BIT_2)
 
 void mdio_write(struct rtl8168_private *tp, u32 RegAddr, u32 value);

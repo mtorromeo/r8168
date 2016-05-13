@@ -3,12 +3,15 @@
 # invoke insmod with all arguments we got
 # and use a pathname, as insmod doesn't look in . by default
 
-TARGET_PATH=$(find /lib/modules/$(uname -r)/kernel/drivers/net -name realtek -type d)
+TARGET_PATH=$(find /lib/modules/$(uname -r)/kernel/drivers/net/ethernet -name realtek -type d)
+if [ "$TARGET_PATH" = "" ]; then
+	TARGET_PATH=$(find /lib/modules/$(uname -r)/kernel/drivers/net -name realtek -type d)
+fi
 if [ "$TARGET_PATH" = "" ]; then
 	TARGET_PATH=/lib/modules/$(uname -r)/kernel/drivers/net
 fi
 echo
-echo "Check old driver and unload it." 
+echo "Check old driver and unload it."
 check=`lsmod | grep r8169`
 if [ "$check" != "" ]; then
         echo "rmmod r8169"
