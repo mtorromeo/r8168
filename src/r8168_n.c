@@ -22795,17 +22795,23 @@ rtl8168_init_one(struct pci_dev *pdev,
                 if ((tp->mcfg == CFG_METHOD_1) || (tp->mcfg == CFG_METHOD_2) || (tp->mcfg == CFG_METHOD_3)) {
                         dev->hw_features &= ~NETIF_F_IPV6_CSUM;
                         netif_set_gso_max_size(dev, LSO_32K);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0) && LINUX_VERSION_CODE < KERNEL_VERSION(4,7,3)
                         dev->gso_min_segs = NIC_MIN_PHYS_BUF_COUNT;
+                        dev->gso_max_segs = NIC_MAX_PHYS_BUF_COUNT_LSO_64K;
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,7,3)
                         dev->gso_max_segs = NIC_MAX_PHYS_BUF_COUNT_LSO_64K;
 #endif
                 } else {
                         dev->hw_features |= NETIF_F_IPV6_CSUM | NETIF_F_TSO6;
                         dev->features |=  NETIF_F_IPV6_CSUM | NETIF_F_TSO6;
                         netif_set_gso_max_size(dev, LSO_64K);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0) && LINUX_VERSION_CODE < KERNEL_VERSION(4,7,3)
                         dev->gso_min_segs = NIC_MIN_PHYS_BUF_COUNT;
                         dev->gso_max_segs = NIC_MAX_PHYS_BUF_COUNT_LSO2;
+#endif
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,7,3)
+                        dev->gso_max_segs = NIC_MAX_PHYS_BUF_COUNT_LSO_64K;
 #endif
                 }
 #endif
@@ -24966,7 +24972,9 @@ rtl8168_start_xmit(struct sk_buff *skb,
         wmb();
         txd->opts1 = cpu_to_le32(opts1);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,7,3)
         dev->trans_start = jiffies;
+#endif
 
         tp->cur_tx += frags + 1;
 
