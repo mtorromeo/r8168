@@ -33,12 +33,13 @@
 
 #include "r8168_dash.h"
 #include "r8168_realwow.h"
+#include "r8168_fiber.h"
 
-#define RTL_ALLOC_SKB(tp, length) dev_alloc_skb(length)
+#define RTL_ALLOC_SKB_INTR(tp, length) dev_alloc_skb(length)
 #ifdef CONFIG_R8168_NAPI
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0)
-#undef RTL_ALLOC_SKB
-#define RTL_ALLOC_SKB(tp, length) napi_alloc_skb(&tp->napi, length)
+#undef RTL_ALLOC_SKB_INTR
+#define RTL_ALLOC_SKB_INTR(tp, length) napi_alloc_skb(&tp->napi, length)
 #endif
 #endif
 
@@ -167,7 +168,7 @@
 #define NAPI_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.042.00" NAPI_SUFFIX
+#define RTL8168_VERSION "8.043.01" NAPI_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
@@ -1374,6 +1375,10 @@ struct rtl8168_private {
 
         u8 RequiredSecLanDonglePatch;
 
+        u32 HwFiberModeVer;
+
+        u8 HwSuppMagicPktVer;
+
         //Dash+++++++++++++++++
         u8 HwSuppDashVer;
         u8 DASH;
@@ -1520,6 +1525,9 @@ enum mcfg {
 #define OOB_CMD_DRIVER_STOP 0x06
 #define OOB_CMD_SET_IPMAC   0x41
 
+#define WAKEUP_MAGIC_PACKET_NOT_SUPPORT (0)
+#define WAKEUP_MAGIC_PACKET_V1 (1)
+#define WAKEUP_MAGIC_PACKET_V2 (2)
 
 //Ram Code Version
 #define NIC_RAMCODE_VERSION_CFG_METHOD_14 (0x0057)
