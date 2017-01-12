@@ -82,9 +82,6 @@
 #include <linux/seq_file.h>
 #endif
 
-/* Maximum events (Rx packets, etc.) to handle at each interrupt. */
-static const int max_interrupt_work = 20;
-
 /* Maximum number of multicast addresses to filter (vs. Rx-all-multicast).
    The RTL chips use a 64 element hash table based on the Ethernet CRC. */
 static const int multicast_filter_limit = 32;
@@ -1118,7 +1115,7 @@ static int proc_get_driver_variable(char *page, char **start,
                         hwoptimize,
                         proc_init_num,
                         s0_magic_packet,
-                        tp->HwSuppMagicPktVer,
+                        tp->HwSuppMagicPktVer
                        );
         spin_unlock_irqrestore(&tp->lock, flags);
 
