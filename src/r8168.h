@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2016 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2017 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -31,9 +31,19 @@
  *  US6,570,884, US6,115,776, and US6,327,625.
  ***********************************************************************************/
 
+#include <linux/ethtool.h>
 #include "r8168_dash.h"
 #include "r8168_realwow.h"
 #include "r8168_fiber.h"
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
+#if defined(skb_vlan_tag_present) && !defined(vlan_tx_tag_present)
+#define vlan_tx_tag_present skb_vlan_tag_present
+#endif
+#if defined(skb_vlan_tag_get) && !defined(vlan_tx_tag_get)
+#define vlan_tx_tag_get skb_vlan_tag_get
+#endif
+#endif //LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
 
 #define RTL_ALLOC_SKB_INTR(tp, length) dev_alloc_skb(length)
 #ifdef CONFIG_R8168_NAPI
@@ -51,6 +61,10 @@
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,5,0)
 #define NETIF_F_ALL_CSUM        NETIF_F_CSUM_MASK
+#else
+#ifndef NETIF_F_ALL_CSUM
+#define NETIF_F_ALL_CSUM        NETIF_F_CSUM_MASK
+#endif
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,4,37)
@@ -106,6 +120,18 @@
 #ifndef NETIF_F_GSO
 #define gso_size    tso_size
 #define gso_segs    tso_segs
+#endif
+
+#ifndef PCI_VENDOR_ID_DLINK
+#define PCI_VENDOR_ID_DLINK 0x1186
+#endif
+
+#ifndef dma_mapping_error
+#define dma_mapping_error(a,b) 0
+#endif
+
+#ifndef netif_err
+#define netif_err(a,b,c,d)
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
@@ -168,12 +194,12 @@
 #define NAPI_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.043.02" NAPI_SUFFIX
+#define RTL8168_VERSION "8.044.02" NAPI_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2016  Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2017  Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -350,11 +376,10 @@ typedef int *napi_budget;
 #define napi dev
 #define RTL_NAPI_CONFIG(ndev, priv, function, weig) ndev->poll=function;    \
                                 ndev->weight=weig;
-#define RTL_NAPI_DEL(priv)
 #define RTL_NAPI_QUOTA(budget, ndev)            min(*budget, ndev->quota)
 #define RTL_GET_PRIV(stuct_ptr, priv_struct)        netdev_priv(stuct_ptr)
 #define RTL_GET_NETDEV(priv_ptr)
-#define RTL_RX_QUOTA(ndev, budget)          ndev->quota
+#define RTL_RX_QUOTA(budget)          *budget
 #define RTL_NAPI_QUOTA_UPDATE(ndev, work_done, budget)  *budget -= work_done;   \
                                 ndev->quota -= work_done;
 #define RTL_NETIF_RX_COMPLETE(dev, napi)        netif_rx_complete(dev)
@@ -363,17 +388,16 @@ typedef int *napi_budget;
 #define RTL_NAPI_RETURN_VALUE               work_done >= work_to_do
 #define RTL_NAPI_ENABLE(dev, napi)          netif_poll_enable(dev)
 #define RTL_NAPI_DISABLE(dev, napi)         netif_poll_disable(dev)
-#define DMA_BIT_MASK(value)             ((1ULL << value) - 1)
+#define DMA_BIT_MASK(n) (((n) == 64) ? ~0ULL : ((1ULL<<(n))-1))
 #else
 typedef struct napi_struct *napi_ptr;
 typedef int napi_budget;
 
 #define RTL_NAPI_CONFIG(ndev, priv, function, weight)   netif_napi_add(ndev, &priv->napi, function, weight)
-#define RTL_NAPI_DEL(priv)   netif_napi_del(&priv->napi)
 #define RTL_NAPI_QUOTA(budget, ndev)            min(budget, budget)
 #define RTL_GET_PRIV(stuct_ptr, priv_struct)        container_of(stuct_ptr, priv_struct, stuct_ptr)
 #define RTL_GET_NETDEV(priv_ptr)            struct net_device *dev = priv_ptr->dev;
-#define RTL_RX_QUOTA(ndev, budget)          budget
+#define RTL_RX_QUOTA(budget)          budget
 #define RTL_NAPI_QUOTA_UPDATE(ndev, work_done, budget)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
 #define RTL_NETIF_RX_COMPLETE(dev, napi)        netif_rx_complete(dev, napi)
@@ -394,6 +418,12 @@ typedef int napi_budget;
 #define RTL_NAPI_ENABLE(dev, napi)          napi_enable(napi)
 #define RTL_NAPI_DISABLE(dev, napi)         napi_disable(napi)
 #endif  //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
+#define RTL_NAPI_DEL(priv)
+#else
+#define RTL_NAPI_DEL(priv)   netif_napi_del(&priv->napi)
+#endif //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
 
 /*****************************************************************************/
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,9)
@@ -512,9 +542,10 @@ static inline int _kc_pci_dma_mapping_error(dma_addr_t dma_addr)
 #endif
 /*****************************************************************************/
 /* 2.6.4 => 2.6.0 */
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,4,25) || \
-    ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && \
-      LINUX_VERSION_CODE < KERNEL_VERSION(2,6,4) ) )
+#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2,4,25) && \
+     LINUX_VERSION_CODE > KERNEL_VERSION(2,4,22)) || \
+    (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0) && \
+      LINUX_VERSION_CODE < KERNEL_VERSION(2,6,4)))
 #define ETHTOOL_OPS_COMPAT
 #endif /* 2.6.4 => 2.6.0 */
 
@@ -1408,7 +1439,7 @@ struct rtl8168_private {
         void *SendToFwBuffer ;
         u64 SendToFwBufferPhy ;
         u8 SendingToFw;
-        u64 UnalignedSendToFwBufferPa;
+        dma_addr_t UnalignedSendToFwBufferPa;
         PTX_DASH_SEND_FW_DESC TxDashSendFwDesc;
         u64 TxDashSendFwDescPhy;
         u8 *UnalignedTxDashSendFwDescVa;
@@ -1416,7 +1447,8 @@ struct rtl8168_private {
         u32 SizeOfTxDashSendFwDesc ;
         u32 NumTxDashSendFwDesc ;
         u32 CurrNumTxDashSendFwDesc ;
-        u64 UnalignedTxDashSendFwDescPa;
+        u32 LastSendNumTxDashSendFwDesc ;
+        dma_addr_t UnalignedTxDashSendFwDescPa;
 
         u32 NumRecvFromFwBuffer ;
         u32 SizeOfRecvFromFwBuffer ;
@@ -1425,7 +1457,7 @@ struct rtl8168_private {
         u64 RecvFromFwBufferPhy ;
 
         void *UnalignedRecvFromFwBufferVa;
-        u64 UnalignedRecvFromFwBufferPa;
+        dma_addr_t UnalignedRecvFromFwBufferPa;
         PRX_DASH_FROM_FW_DESC RxDashRecvFwDesc;
         u64 RxDashRecvFwDescPhy;
         u8 *UnalignedRxDashRecvFwDescVa;
@@ -1433,7 +1465,7 @@ struct rtl8168_private {
         u32 SizeOfRxDashRecvFwDesc ;
         u32 NumRxDashRecvFwDesc ;
         u32 CurrNumRxDashRecvFwDesc ;
-        u64 UnalignedRxDashRecvFwDescPa;
+        dma_addr_t UnalignedRxDashRecvFwDescPa;
         u8 DashReqRegValue;
         u16 HostReqValue;
 
