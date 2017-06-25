@@ -25731,8 +25731,9 @@ process_pkt:
 
                         if (rtl8168_rx_vlan_skb(tp, desc, skb) < 0)
                                 rtl8168_rx_skb(tp, skb);
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,11,0)
                         dev->last_rx = jiffies;
+#endif
                         RTLDEV->stats.rx_bytes += pkt_size;
                         RTLDEV->stats.rx_packets++;
                 }
