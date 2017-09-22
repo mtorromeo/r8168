@@ -47,11 +47,19 @@ enum {
         FIBER_MODE_MAX
 };
 
+enum {
+        FIBER_STAT_NOT_CHECKED = 0,
+        FIBER_STAT_CONNECT,
+        FIBER_STAT_DISCONNECT,
+        FIBER_STAT_MAX
+};
+
 #define HW_FIBER_MODE_ENABLED(_M)        ((_M)->HwFiberModeVer > 0)
 
 
 
 void rtl8168_hw_fiber_phy_config(struct net_device *dev);
+u32 rtl8168_hw_fiber_get_connect_status(struct net_device *dev);
 
 
 #endif /* _LINUX_R8168_FIBER_H */

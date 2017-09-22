@@ -37,8 +37,7 @@
 #define SIOCDEVPRIVATE_RTLDASH   SIOCDEVPRIVATE+2
 
 enum rtl_dash_cmd {
-
-        RTL_DASH_ARP_NS_OFFLOAD=0,
+        RTL_DASH_ARP_NS_OFFLOAD = 0,
         RTL_DASH_SET_OOB_IPMAC,
         RTL_DASH_NOTIFY_OOB,
 
@@ -46,7 +45,17 @@ enum rtl_dash_cmd {
         RTL_DASH_CHECK_SEND_BUFFER_TO_DASH_FW_COMPLETE,
         RTL_DASH_GET_RCV_FROM_FW_BUFFER_DATA,
 
-        RTLT_DASH_COMMAND_INVALID
+        RTL_FW_SET_IPV4 = 0x10,
+        RTL_FW_GET_IPV4,
+        RTL_FW_SET_IPV6,
+        RTL_FW_GET_IPV6,
+        RTL_FW_SET_EXT_SNMP,
+        RTL_FW_GET_EXT_SNMP,
+        RTL_FW_SET_WAKEUP_PATTERN,
+        RTL_FW_GET_WAKEUP_PATTERN,
+        RTL_FW_DEL_WAKEUP_PATTERN,
+
+        RTLT_DASH_COMMAND_INVALID,
 };
 
 struct rtl_dash_ip_mac {
@@ -63,6 +72,41 @@ struct rtl_dash_ioctl_struct {
                 __u32	data;
                 void *data_buffer;
         };
+};
+
+struct settings_ipv4 {
+        __u32	IPv4addr;
+        __u32	IPv4mask;
+        __u32	IPv4Gateway;
+};
+
+struct settings_ipv6 {
+        __u32	reserved;
+        __u32	prefixLen;
+        __u16	IPv6addr[8];
+        __u16	IPv6Gateway[8];
+};
+
+struct settings_ext_snmp {
+        __u16	index;
+        __u16	oid_get_len;
+        __u8	oid_for_get[24];
+        __u8	reserved0[26];
+        __u16	value_len;
+        __u8	value[256];
+        __u8	supported;
+        __u8	reserved1[27];
+};
+
+struct wakeup_pattern {
+        __u8	index;
+        __u8	valid;
+        __u8	start;
+        __u8	length;
+        __u8	name[36];
+        __u8	mask[16];
+        __u8	pattern[128];
+        __u32	reserved[2];
 };
 
 typedef struct _RX_DASH_FROM_FW_DESC {
@@ -94,7 +138,7 @@ OSOOBHdr, *POSOOBHdr;
 
 typedef struct _RX_DASH_BUFFER_TYPE_2 {
         OSOOBHdr oobhdr;
-        void *RxDataBuffer;
+        u8 RxDataBuffer[0];
 }
 RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 
@@ -127,9 +171,10 @@ RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 #define HW_DASH_SUPPORT_DASH(_M)        ((_M)->HwSuppDashVer > 0 )
 #define HW_DASH_SUPPORT_TYPE_1(_M)        ((_M)->HwSuppDashVer == 1 )
 #define HW_DASH_SUPPORT_TYPE_2(_M)        ((_M)->HwSuppDashVer == 2 )
+#define HW_DASH_SUPPORT_TYPE_3(_M)        ((_M)->HwSuppDashVer == 3 )
 
-#define RECV_FROM_FW_BUF_SIZE (1518)
-#define SEND_TO_FW_BUF_SIZE (1518)
+#define RECV_FROM_FW_BUF_SIZE (1520)
+#define SEND_TO_FW_BUF_SIZE (1520)
 
 #define RX_DASH_FROM_FW_OWN BIT_15
 #define TX_DASH_SEND_FW_OWN BIT_15
@@ -182,6 +227,22 @@ RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 #define CMAC_OOB_STOP 0x25
 #define CMAC_OOB_INIT 0x26
 #define CMAC_OOB_RESET 0x2a
+
+#define NO_BASE_ADDRESS 0x00000000
+#define RTL8168FP_OOBMAC_BASE 0xBAF70000
+#define RTL8168FP_CMAC_IOBASE 0xBAF20000
+#define RTL8168FP_KVM_BASE 0xBAF80400
+#define CMAC_SYNC_REG 0x20
+#define CMAC_RXDESC_OFFSET 0x90    //RX: 0x90 - 0x98
+#define CMAC_TXDESC_OFFSET 0x98    //TX: 0x98 - 0x9F
+
+/* cmac write/read MMIO register */
+#define RTL_CMAC_W8(reg, val8)   writeb ((val8), tp->cmac_ioaddr + (reg))
+#define RTL_CMAC_W16(reg, val16) writew ((val16), tp->cmac_ioaddr + (reg))
+#define RTL_CMAC_W32(reg, val32) writel ((val32), tp->cmac_ioaddr + (reg))
+#define RTL_CMAC_R8(reg)     readb (tp->cmac_ioaddr + (reg))
+#define RTL_CMAC_R16(reg)        readw (tp->cmac_ioaddr + (reg))
+#define RTL_CMAC_R32(reg)        ((unsigned long) readl (tp->cmac_ioaddr + (reg)))
 
 int rtl8168_dash_ioctl(struct net_device *dev, struct ifreq *ifr);
 void HandleDashInterrupt(struct net_device *dev);

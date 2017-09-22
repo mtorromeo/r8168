@@ -36,6 +36,83 @@
 #include "r8168_realwow.h"
 #include "r8168_fiber.h"
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
+static inline void eth_hw_addr_random(struct net_device *dev)
+{
+        random_ether_addr(dev->dev_addr);
+}
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0)
+static inline void ether_addr_copy(u8 *dst, const u8 *src)
+{
+        u16 *a = (u16 *)dst;
+        const u16 *b = (const u16 *)src;
+
+        a[0] = b[0];
+        a[1] = b[1];
+        a[2] = b[2];
+}
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0)
+#define IS_ERR_OR_NULL(ptr)			(!ptr)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
+#define reinit_completion(x)			((x)->done = 0)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39)
+#define pm_runtime_mark_last_busy(x)
+#define pm_runtime_put_autosuspend(x)		pm_runtime_put(x)
+#define pm_runtime_put_sync_autosuspend(x)	pm_runtime_put_sync(x)
+
+static inline bool pm_runtime_suspended(struct device *dev)
+{
+        return dev->power.runtime_status == RPM_SUSPENDED
+               && !dev->power.disable_depth;
+}
+
+static inline bool pm_runtime_active(struct device *dev)
+{
+        return dev->power.runtime_status == RPM_ACTIVE
+               || dev->power.disable_depth;
+}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
+#define queue_delayed_work(long_wq, work, delay)	schedule_delayed_work(work, delay)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
+#define netif_printk(priv, type, level, netdev, fmt, args...)	\
+	do {								\
+		if (netif_msg_##type(priv))				\
+			printk(level "%s: " fmt,(netdev)->name , ##args); \
+	} while (0)
+
+#define netif_emerg(priv, type, netdev, fmt, args...)		\
+		netif_printk(priv, type, KERN_EMERG, netdev, fmt, ##args)
+#define netif_alert(priv, type, netdev, fmt, args...)		\
+		netif_printk(priv, type, KERN_ALERT, netdev, fmt, ##args)
+#define netif_crit(priv, type, netdev, fmt, args...)		\
+		netif_printk(priv, type, KERN_CRIT, netdev, fmt, ##args)
+#define netif_err(priv, type, netdev, fmt, args...)		\
+		netif_printk(priv, type, KERN_ERR, netdev, fmt, ##args)
+#define netif_warn(priv, type, netdev, fmt, args...)		\
+		netif_printk(priv, type, KERN_WARNING, netdev, fmt, ##args)
+#define netif_notice(priv, type, netdev, fmt, args...)		\
+		netif_printk(priv, type, KERN_NOTICE, netdev, fmt, ##args)
+#define netif_info(priv, type, netdev, fmt, args...)		\
+		netif_printk(priv, type, KERN_INFO, (netdev), fmt, ##args)
+#endif
+#endif
+#endif
+#endif
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+#define setup_timer(_timer, _function, _data) \
+do { \
+	(_timer)->function = _function; \
+	(_timer)->data = _data; \
+	init_timer(_timer); \
+} while (0)
+#endif //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
 #if defined(skb_vlan_tag_present) && !defined(vlan_tx_tag_present)
 #define vlan_tx_tag_present skb_vlan_tag_present
@@ -193,8 +270,25 @@
 #else
 #define NAPI_SUFFIX ""
 #endif
+#ifdef ENABLE_FIBER_SUPPORT
+#define FIBER_SUFFIX "-FIBER"
+#else
+#define FIBER_SUFFIX ""
+#endif
+#ifdef ENABLE_REALWOW_SUPPORT
+#define REALWOW_SUFFIX "-REALWOW"
+#else
+#define REALWOW_SUFFIX ""
+#endif
+#if defined(ENABLE_DASH_PRINTER_SUPPORT)
+#define DASH_SUFFIX "-PRINTER"
+#elif defined(ENABLE_DASH_SUPPORT)
+#define DASH_SUFFIX "-DASH"
+#else
+#define DASH_SUFFIX ""
+#endif
 
-#define RTL8168_VERSION "8.044.02" NAPI_SUFFIX
+#define RTL8168_VERSION "8.045.08" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
@@ -250,14 +344,15 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define TX_DMA_BURST_16     0
 #define Reserved1_data  0x3F
 #define RxPacketMaxSize 0x3FE8  /* 16K - 1 - ETH_HLEN - VLAN - CRC... */
-#define Jumbo_Frame_2k  (2 * 1024)
-#define Jumbo_Frame_3k  (3 * 1024)
-#define Jumbo_Frame_4k  (4 * 1024)
-#define Jumbo_Frame_5k  (5 * 1024)
-#define Jumbo_Frame_6k  (6 * 1024)
-#define Jumbo_Frame_7k  (7 * 1024)
-#define Jumbo_Frame_8k  (8 * 1024)
-#define Jumbo_Frame_9k  (9 * 1024)
+#define Jumbo_Frame_1k  ETH_DATA_LEN
+#define Jumbo_Frame_2k  (2*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
+#define Jumbo_Frame_3k  (3*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
+#define Jumbo_Frame_4k  (4*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
+#define Jumbo_Frame_5k  (5*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
+#define Jumbo_Frame_6k  (6*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
+#define Jumbo_Frame_7k  (7*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
+#define Jumbo_Frame_8k  (8*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
+#define Jumbo_Frame_9k  (9*1024 - ETH_HLEN - VLAN_HLEN - ETH_FCS_LEN)
 #define InterFrameGap   0x03    /* 3 means InterFrameGap = the shortest one */
 #define RxEarly_off_V1 (0x07 << 11)
 #define RxEarly_off_V2 (1 << 11)
@@ -382,7 +477,7 @@ typedef int *napi_budget;
 #define RTL_RX_QUOTA(budget)          *budget
 #define RTL_NAPI_QUOTA_UPDATE(ndev, work_done, budget)  *budget -= work_done;   \
                                 ndev->quota -= work_done;
-#define RTL_NETIF_RX_COMPLETE(dev, napi)        netif_rx_complete(dev)
+#define RTL_NETIF_RX_COMPLETE(dev, napi, work_done)        netif_rx_complete(dev)
 #define RTL_NETIF_RX_SCHEDULE_PREP(dev, napi)       netif_rx_schedule_prep(dev)
 #define __RTL_NETIF_RX_SCHEDULE(dev, napi)      __netif_rx_schedule(dev)
 #define RTL_NAPI_RETURN_VALUE               work_done >= work_to_do
@@ -400,17 +495,21 @@ typedef int napi_budget;
 #define RTL_RX_QUOTA(budget)          budget
 #define RTL_NAPI_QUOTA_UPDATE(ndev, work_done, budget)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
-#define RTL_NETIF_RX_COMPLETE(dev, napi)        netif_rx_complete(dev, napi)
+#define RTL_NETIF_RX_COMPLETE(dev, napi, work_done)        netif_rx_complete(dev, napi)
 #define RTL_NETIF_RX_SCHEDULE_PREP(dev, napi)       netif_rx_schedule_prep(dev, napi)
 #define __RTL_NETIF_RX_SCHEDULE(dev, napi)      __netif_rx_schedule(dev, napi)
 #endif
 #if LINUX_VERSION_CODE == KERNEL_VERSION(2,6,29)
-#define RTL_NETIF_RX_COMPLETE(dev, napi)        netif_rx_complete(napi)
+#define RTL_NETIF_RX_COMPLETE(dev, napi, work_done)        netif_rx_complete(napi)
 #define RTL_NETIF_RX_SCHEDULE_PREP(dev, napi)       netif_rx_schedule_prep(napi)
 #define __RTL_NETIF_RX_SCHEDULE(dev, napi)      __netif_rx_schedule(napi)
 #endif
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,29)
-#define RTL_NETIF_RX_COMPLETE(dev, napi)        napi_complete(napi)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0)
+#define RTL_NETIF_RX_COMPLETE(dev, napi, work_done)        napi_complete_done(napi, work_done)
+#else
+#define RTL_NETIF_RX_COMPLETE(dev, napi, work_done)        napi_complete(napi)
+#endif
 #define RTL_NETIF_RX_SCHEDULE_PREP(dev, napi)       napi_schedule_prep(napi)
 #define __RTL_NETIF_RX_SCHEDULE(dev, napi)      __napi_schedule(napi)
 #endif
@@ -940,10 +1039,10 @@ enum RTL8168_registers {
         FuncEventMask   = 0xF4,
         TimeInt3        = 0xF4,
         FuncPresetState = 0xF8,
-        IBCR0           = 0xF8,
-        IBCR2           = 0xF9,
-        IBIMR0          = 0xFA,
-        IBISR0          = 0xFB,
+        CMAC_IBCR0      = 0xF8,
+        CMAC_IBCR2      = 0xF9,
+        CMAC_IBIMR0     = 0xFA,
+        CMAC_IBISR0     = 0xFB,
         FuncForceEvent  = 0xFC,
 };
 
@@ -1352,13 +1451,17 @@ struct rtl8168_private {
         u8  eeprom_type;
         u8  autoneg;
         u8  duplex;
-        u16 speed;
+        u32 speed;
         u16 eeprom_len;
         u16 cur_page;
         u32 bios_setting;
 
-        int (*set_speed)(struct net_device *, u8 autoneg, u16 speed, u8 duplex);
+        int (*set_speed)(struct net_device *, u8 autoneg, u32 speed, u8 duplex);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0)
         void (*get_settings)(struct net_device *, struct ethtool_cmd *);
+#else
+        void (*get_settings)(struct net_device *, struct ethtool_link_ksettings *);
+#endif
         void (*phy_reset_enable)(struct net_device *);
         unsigned int (*phy_reset_pending)(struct net_device *);
         unsigned int (*link_ok)(struct net_device *);
@@ -1407,12 +1510,21 @@ struct rtl8168_private {
         u8 RequiredSecLanDonglePatch;
 
         u32 HwFiberModeVer;
+        u32 HwFiberStat;
 
         u8 HwSuppMagicPktVer;
+
+        u8 HwSuppCheckPhyDisableModeVer;
+
+        u8 random_mac;
 
         //Dash+++++++++++++++++
         u8 HwSuppDashVer;
         u8 DASH;
+        u8 dash_printer_enabled;
+        u8 HwPkgDet;
+        void __iomem *mapped_cmac_ioaddr; /* mapped cmac memory map physical address */
+        void __iomem *cmac_ioaddr; /* cmac memory map physical address */
 
 #ifdef ENABLE_DASH_SUPPORT
         u16 AfterRecvFromFwBufLen;
@@ -1470,10 +1582,15 @@ struct rtl8168_private {
         u16 HostReqValue;
 
         u32 CmacResetIsrCounter;
-        u8 CmacResetIsr1st ;
-        u8 CmacResetIsr2nd ;
+        u8 CmacResetIntr ;
         u8 CmacResetting ;
         u8 CmacOobIssueCmacReset ;
+
+#if defined(ENABLE_DASH_PRINTER_SUPPORT)
+        struct completion fw_ack;
+        struct completion fw_req;
+        struct completion fw_host_ok;
+#endif
         //Dash-----------------
 #endif //ENABLE_DASH_SUPPORT
 
@@ -1533,6 +1650,8 @@ enum mcfg {
         CFG_METHOD_28,
         CFG_METHOD_29,
         CFG_METHOD_30,
+        CFG_METHOD_31,
+        CFG_METHOD_32,
         CFG_METHOD_MAX,
         CFG_METHOD_DEFAULT = 0xFF
 };
@@ -1572,6 +1691,7 @@ enum mcfg {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_26 (0x0012)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_28 (0x0010)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0018)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0003)
 
 //hwoptimize
 #define HW_PATCH_SOC_LAN (BIT_0)
@@ -1592,9 +1712,12 @@ int rtl8168_eri_write(void __iomem *ioaddr, int addr, int len, u32 value, int ty
 void OOB_mutex_lock(struct rtl8168_private *tp);
 u32 mdio_read(struct rtl8168_private *tp, u32 RegAddr);
 u32 OCP_read(struct rtl8168_private *tp, u16 addr, u8 len);
+u32 OCP_read_with_oob_base_address(struct rtl8168_private *tp, u16 addr, u8 len, u32 base_address);
+u32 OCP_write_with_oob_base_address(struct rtl8168_private *tp, u16 addr, u8 len, u32 value, u32 base_address);
 u32 rtl8168_eri_read(void __iomem *ioaddr, int addr, int len, int type);
+u32 rtl8168_eri_read_with_oob_base_address(void __iomem *ioaddr, int addr, int len, int type, u32 base_address);
+int rtl8168_eri_write_with_oob_base_address(void __iomem *ioaddr, int addr, int len, u32 value, int type, u32 base_address);
 u16 rtl8168_ephy_read(void __iomem *ioaddr, int RegAddr);
-void rtl8168_hw_disable_mac_mcu_bps(struct net_device *dev);
 void rtl8168_wait_txrx_fifo_empty(struct net_device *dev);
 void EnableNowIsOob(struct rtl8168_private *tp);
 void DisableNowIsOob(struct rtl8168_private *tp);
@@ -1603,7 +1726,9 @@ void Dash2DisableTx(struct rtl8168_private *tp);
 void Dash2EnableTx(struct rtl8168_private *tp);
 void Dash2DisableRx(struct rtl8168_private *tp);
 void Dash2EnableRx(struct rtl8168_private *tp);
+void rtl8168_hw_disable_mac_mcu_bps(struct net_device *dev);
 
+#define HW_SUPPORT_CHECK_PHY_DISABLE_MODE(_M)        ((_M)->HwSuppCheckPhyDisableModeVer > 0 )
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
 #define netdev_mc_count(dev) ((dev)->mc_count)
