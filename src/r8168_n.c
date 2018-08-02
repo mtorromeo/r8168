@@ -407,8 +407,13 @@ MODULE_VERSION(RTL8168_VERSION);
 static void rtl8168_sleep_rx_enable(struct net_device *dev);
 static void rtl8168_dsm(struct net_device *dev, int dev_state);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 static void rtl8168_esd_timer(unsigned long __opaque);
 static void rtl8168_link_timer(unsigned long __opaque);
+#else
+static void rtl8168_esd_timer(struct timer_list *timer_list);
+static void rtl8168_link_timer(struct timer_list *timer_list);
+#endif
 static void rtl8168_tx_clear(struct rtl8168_private *tp);
 static void rtl8168_rx_clear(struct rtl8168_private *tp);
 
@@ -22964,7 +22969,11 @@ static inline void rtl8168_request_esd_timer(struct net_device *dev)
         struct rtl8168_private *tp = netdev_priv(dev);
         struct timer_list *timer = &tp->esd_timer;
 
-        setup_timer(timer, rtl8168_esd_timer, (unsigned long)dev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
+        setup_timer(timer, rtl8168_esd_timer, (unsigned long)tp);
+#else
+        timer_setup(timer, rtl8168_esd_timer, 0);
+#endif
         mod_timer(timer, jiffies + RTL8168_ESD_TIMEOUT);
 }
 
@@ -22978,7 +22987,11 @@ static inline void rtl8168_request_link_timer(struct net_device *dev)
         struct rtl8168_private *tp = netdev_priv(dev);
         struct timer_list *timer = &tp->link_timer;
 
-        setup_timer(timer, rtl8168_link_timer, (unsigned long)dev);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
+        setup_timer(timer, rtl8168_link_timer, (unsigned long)tp);
+#else
+        timer_setup(timer, rtl8168_link_timer, 0);
+#endif
         mod_timer(timer, jiffies + RTL8168_LINK_TIMEOUT);
 }
 
@@ -24717,10 +24730,16 @@ err_out:
 #define PCI_DEVICE_SERIAL_NUMBER (0x0164)
 
 static void
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 rtl8168_esd_timer(unsigned long __opaque)
 {
-        struct net_device *dev = (struct net_device *)__opaque;
-        struct rtl8168_private *tp = netdev_priv(dev);
+        struct rtl8168_private *tp = (struct rtl8168_private *)__opaque;
+#else
+rtl8168_esd_timer(struct timer_list *timer_list)
+{
+        struct rtl8168_private *tp = container_of(timer_list, struct rtl8168_private, esd_timer);
+#endif
+        struct net_device *dev = tp->dev;
         struct pci_dev *pdev = tp->pci_dev;
         struct timer_list *timer = &tp->esd_timer;
         unsigned long timeout = RTL8168_ESD_TIMEOUT;
@@ -24856,10 +24875,16 @@ rtl8168_esd_timer(unsigned long __opaque)
 }
 
 static void
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,15,0)
 rtl8168_link_timer(unsigned long __opaque)
 {
-        struct net_device *dev = (struct net_device *)__opaque;
-        struct rtl8168_private *tp = netdev_priv(dev);
+        struct rtl8168_private *tp = (struct rtl8168_private *)__opaque;
+#else
+rtl8168_link_timer(struct timer_list *timer_list)
+{
+        struct rtl8168_private *tp = container_of(timer_list, struct rtl8168_private, link_timer);
+#endif
+        struct net_device *dev = tp->dev;
         struct timer_list *timer = &tp->link_timer;
         unsigned long flags;
 
