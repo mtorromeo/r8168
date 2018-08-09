@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2017 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2018 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -44,6 +44,10 @@ enum rtl_dash_cmd {
         RTL_DASH_SEND_BUFFER_DATA_TO_DASH_FW,
         RTL_DASH_CHECK_SEND_BUFFER_TO_DASH_FW_COMPLETE,
         RTL_DASH_GET_RCV_FROM_FW_BUFFER_DATA,
+        RTL_DASH_OOB_REQ,
+        RTL_DASH_OOB_ACK,
+        RTL_DASH_DETACH_OOB_REQ,
+        RTL_DASH_DETACH_OOB_ACK,
 
         RTL_FW_SET_IPV4 = 0x10,
         RTL_FW_GET_IPV4,

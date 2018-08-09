@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2017 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2018 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -36,11 +36,12 @@
 #include "r8168_realwow.h"
 #include "r8168_fiber.h"
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0)
-static inline void eth_hw_addr_random(struct net_device *dev)
-{
-        random_ether_addr(dev->dev_addr);
-}
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
+#define skb_transport_offset(skb) (skb->h.raw - skb->data)
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,26)
+#define device_set_wakeup_enable(dev, val)	do {} while (0)
 #endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0)
@@ -60,6 +61,7 @@ static inline void ether_addr_copy(u8 *dst, const u8 *src)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0)
 #define reinit_completion(x)			((x)->done = 0)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,32)
 #define pm_runtime_mark_last_busy(x)
 #define pm_runtime_put_autosuspend(x)		pm_runtime_put(x)
 #define pm_runtime_put_sync_autosuspend(x)	pm_runtime_put_sync(x)
@@ -75,6 +77,7 @@ static inline bool pm_runtime_active(struct device *dev)
         return dev->power.runtime_status == RPM_ACTIVE
                || dev->power.disable_depth;
 }
+#endif
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,36)
 #define queue_delayed_work(long_wq, work, delay)	schedule_delayed_work(work, delay)
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
@@ -211,6 +214,42 @@ do { \
 #define netif_err(a,b,c,d)
 #endif
 
+#ifndef AUTONEG_DISABLE
+#define AUTONEG_DISABLE   0x00
+#endif
+
+#ifndef AUTONEG_ENABLE
+#define AUTONEG_ENABLE    0x01
+#endif
+
+#ifndef BMCR_SPEED1000
+#define BMCR_SPEED1000  0x0040
+#endif
+
+#ifndef BMCR_SPEED100
+#define BMCR_SPEED100   0x2000
+#endif
+
+#ifndef BMCR_SPEED10
+#define BMCR_SPEED10    0x0000
+#endif
+
+#ifndef SPEED_UNKNOWN
+#define SPEED_UNKNOWN   -1
+#endif
+
+#ifndef DUPLEX_UNKNOWN
+#define DUPLEX_UNKNOWN  0xff
+#endif
+
+#ifndef SUPPORTED_Pause
+#define SUPPORTED_Pause  (1 << 13)
+#endif
+
+#ifndef SUPPORTED_Asym_Pause
+#define SUPPORTED_Asym_Pause  (1 << 14)
+#endif
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
 #ifdef CONFIG_NET_POLL_CONTROLLER
 #define RTL_NET_POLL_CONTROLLER dev->poll_controller=rtl8168_netpoll
@@ -288,12 +327,12 @@ do { \
 #define DASH_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.045.08" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.046.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2017  Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2018  Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -330,6 +369,14 @@ This is free software, and you are welcome to redistribute it under certain cond
 
 #ifndef MAC_PROTOCOL_LEN
 #define MAC_PROTOCOL_LEN    2
+#endif
+
+#ifndef ETH_FCS_LEN
+#define ETH_FCS_LEN	  4
+#endif
+
+#ifndef NETIF_F_TSO6
+#define NETIF_F_TSO6  0
 #endif
 
 #define Reserved2_data  7
@@ -1191,7 +1238,7 @@ enum RTL8168_register_content {
         EPHYAR_Flag = 0x80000000,
         EPHYAR_Write = 0x80000000,
         EPHYAR_Read = 0x00000000,
-        EPHYAR_Reg_Mask = 0x1f,
+        EPHYAR_Reg_Mask = 0x3f,
         EPHYAR_Reg_shift = 16,
         EPHYAR_Data_Mask = 0xffff,
 
@@ -1241,6 +1288,10 @@ enum RTL8168_register_content {
         EFUSE_WRITE_OK  = 0x00000000,
         EFUSE_READ  = 0x00000000,
         EFUSE_READ_OK   = 0x80000000,
+        EFUSE_WRITE_V3 = 0x40000000,
+        EFUSE_WRITE_OK_V3  = 0x00000000,
+        EFUSE_READ_V3  = 0x80000000,
+        EFUSE_READ_OK_V3   = 0x00000000,
         EFUSE_Reg_Mask  = 0x03FF,
         EFUSE_Reg_Shift = 8,
         EFUSE_Check_Cnt = 300,
@@ -1452,11 +1503,12 @@ struct rtl8168_private {
         u8  autoneg;
         u8  duplex;
         u32 speed;
+        u32 advertising;
         u16 eeprom_len;
         u16 cur_page;
         u32 bios_setting;
 
-        int (*set_speed)(struct net_device *, u8 autoneg, u32 speed, u8 duplex);
+        int (*set_speed)(struct net_device *, u8 autoneg, u32 speed, u8 duplex, u32 adv);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0)
         void (*get_settings)(struct net_device *, struct ethtool_cmd *);
 #else
@@ -1511,12 +1563,17 @@ struct rtl8168_private {
 
         u32 HwFiberModeVer;
         u32 HwFiberStat;
+        u8 HwSwitchMdiToFiber;
+
+        u16 NicCustLedValue;
 
         u8 HwSuppMagicPktVer;
 
         u8 HwSuppCheckPhyDisableModeVer;
 
         u8 random_mac;
+
+        u8 HwSuppGigaForceMode;
 
         //Dash+++++++++++++++++
         u8 HwSuppDashVer;
@@ -1585,6 +1642,7 @@ struct rtl8168_private {
         u8 CmacResetIntr ;
         u8 CmacResetting ;
         u8 CmacOobIssueCmacReset ;
+        u32 CmacResetbyFwCnt;
 
 #if defined(ENABLE_DASH_PRINTER_SUPPORT)
         struct completion fw_ack;
@@ -1683,13 +1741,13 @@ enum mcfg {
 //Ram Code Version
 #define NIC_RAMCODE_VERSION_CFG_METHOD_14 (0x0057)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_16 (0x0055)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_18 (0x0044)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_18 (0x0052)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_20 (0x0044)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_21 (0x0042)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_24 (0x0001)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_23 (0x0015)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_26 (0x0012)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_28 (0x0010)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_28 (0x0019)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0018)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0003)
 
