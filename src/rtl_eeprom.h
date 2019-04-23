@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2018 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2019 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -40,16 +40,16 @@
 
 #define RTL_CLOCK_RATE  3
 
-void rtl_eeprom_type(struct rtl8168_private *tp);
-void rtl_eeprom_cleanup(void __iomem *ioaddr);
-u16 rtl_eeprom_read_sc(struct rtl8168_private *tp, u16 reg);
-void rtl_eeprom_write_sc(struct rtl8168_private *tp, u16 reg, u16 data);
-void rtl_shift_out_bits(int data, int count, void __iomem *ioaddr);
-u16 rtl_shift_in_bits(void __iomem *ioaddr);
-void rtl_raise_clock(u8 *x, void __iomem *ioaddr);
-void rtl_lower_clock(u8 *x, void __iomem *ioaddr);
-void rtl_stand_by(void __iomem *ioaddr);
-void rtl_set_eeprom_sel_low(void __iomem *ioaddr);
+void rtl8168_eeprom_type(struct rtl8168_private *tp);
+void rtl8168_eeprom_cleanup(void __iomem *ioaddr);
+u16 rtl8168_eeprom_read_sc(struct rtl8168_private *tp, u16 reg);
+void rtl8168_eeprom_write_sc(struct rtl8168_private *tp, u16 reg, u16 data);
+void rtl8168_shift_out_bits(int data, int count, void __iomem *ioaddr);
+u16 rtl8168_shift_in_bits(void __iomem *ioaddr);
+void rtl8168_raise_clock(u8 *x, void __iomem *ioaddr);
+void rtl8168_lower_clock(u8 *x, void __iomem *ioaddr);
+void rtl8168_stand_by(void __iomem *ioaddr);
+void rtl8168_set_eeprom_sel_low(void __iomem *ioaddr);
 
 
 

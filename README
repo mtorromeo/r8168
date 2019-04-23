@@ -24,8 +24,8 @@
 		# lsmod | grep r8168
 		# ifconfig -a
 
-	If there is a device name, ethX, shown on the monitor, the linux 
-	driver is loaded. Then, you can use the following command to activate 
+	If there is a device name, ethX, shown on the monitor, the linux
+	driver is loaded. Then, you can use the following command to activate
 	the ethX.
 
 		# ifconfig ethX up
@@ -36,12 +36,12 @@
 	1. Set manually
 		a. Set the IP address of your machine.
 
-			# ifconfig ethX "the IP address of your machine" 
+			# ifconfig ethX "the IP address of your machine"
 
 		b. Set the IP address of DNS.
 
 		   Insert the following configuration in /etc/resolv.conf.
-		
+
 			nameserver "the IP address of DNS"
 
 		c. Set the IP address of gateway.
@@ -50,7 +50,7 @@
 
 	2. Set by doing configurations in /etc/sysconfig/network-scripts
 	   /ifcfg-ethX for Redhat and Fedora, or /etc/sysconfig/network
-	   /ifcfg-ethX for SuSE. There are two examples to set network 
+	   /ifcfg-ethX for SuSE. There are two examples to set network
 	   configurations.
 
 		a. Fixed IP address:
@@ -66,7 +66,7 @@
 		b. DHCP:
 			DEVICE=eth0
 			BOOTPROTO=dhcp
-			ONBOOT=yes	
+			ONBOOT=yes
 
 <Modify the MAC address>
 	There are two ways to modify the MAC address of the NIC.
@@ -88,7 +88,7 @@
 
 	1. Force the link status when insert the driver.
 
-	   If the user is in the path ~/r8168, the link status can be forced 
+	   If the user is in the path ~/r8168, the link status can be forced
 	   to one of the 5 modes as following command.
 
 		# insmod ./src/r8168.ko speed=SPEED_MODE duplex=DUPLEX_MODE autoneg=NWAY_OPTION
@@ -124,7 +124,7 @@
 						= on	for auto-negotiation on (nway force)
 
 		For example:
-		
+
 			# ethtool -s eth0 speed 100 duplex full autoneg on
 
 		will force PHY to operate in 100Mpbs Full-duplex(nway force).

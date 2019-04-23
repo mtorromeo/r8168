@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2018 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2019 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -60,12 +60,15 @@ int rtl8168_asf_ioctl(struct net_device *dev,
         void __iomem *ioaddr = tp->mmio_addr;
         void *user_data = ifr->ifr_data;
         struct asf_ioctl_struct asf_usrdata;
+        unsigned long flags;
 
         if (tp->mcfg != CFG_METHOD_7 && tp->mcfg != CFG_METHOD_8)
                 return -EOPNOTSUPP;
 
         if (copy_from_user(&asf_usrdata, user_data, sizeof(struct asf_ioctl_struct)))
                 return -EFAULT;
+
+        spin_lock_irqsave(&tp->lock, flags);
 
         switch (asf_usrdata.offset) {
         case HBPeriod:
@@ -192,6 +195,8 @@ int rtl8168_asf_ioctl(struct net_device *dev,
                 return -EOPNOTSUPP;
         }
 
+        spin_unlock_irqrestore(&tp->lock, flags);
+
         if (copy_to_user(user_data, &asf_usrdata, sizeof(struct asf_ioctl_struct)))
                 return -EFAULT;
 
@@ -226,9 +231,9 @@ void rtl8168_asf_console_mac(struct rtl8168_private *tp, int arg, unsigned int *
                         rtl8168_eri_write(ioaddr, ConsoleMA + i, RW_ONE_BYTE, data[i], ERIAR_ASF);
 
                 /* write the new console MAC address to EEPROM */
-                rtl_eeprom_write_sc(tp, 70, (data[1] << 8) | data[0]);
-                rtl_eeprom_write_sc(tp, 71, (data[3] << 8) | data[2]);
-                rtl_eeprom_write_sc(tp, 72, (data[5] << 8) | data[4]);
+                rtl8168_eeprom_write_sc(tp, 70, (data[1] << 8) | data[0]);
+                rtl8168_eeprom_write_sc(tp, 71, (data[3] << 8) | data[2]);
+                rtl8168_eeprom_write_sc(tp, 72, (data[5] << 8) | data[4]);
         }
 }
 
@@ -251,8 +256,8 @@ void rtl8168_asf_ip_address(struct rtl8168_private *tp, int arg, int offset, uns
                         eeprom_off = 75;
 
                 /* write the new IP address to EEPROM */
-                rtl_eeprom_write_sc(tp, eeprom_off, (data[1] << 8) | data[0]);
-                rtl_eeprom_write_sc(tp, eeprom_off + 1, (data[3] << 8) | data[2]);
+                rtl8168_eeprom_write_sc(tp, eeprom_off, (data[1] << 8) | data[0]);
+                rtl8168_eeprom_write_sc(tp, eeprom_off + 1, (data[3] << 8) | data[2]);
 
         }
 }
@@ -370,7 +375,7 @@ void rtl8168_asf_key_access(struct rtl8168_private *tp, int arg, int offset, uns
 
                 /* write the new key to EEPROM */
                 for (i = 0, j = 19; i < 10; i++, j = j - 2)
-                        rtl_eeprom_write_sc(tp, key_off + i, (data[j - 1] << 8) | data[j]);
+                        rtl8168_eeprom_write_sc(tp, key_off + i, (data[j - 1] << 8) | data[j]);
         }
 }
 
