@@ -110,8 +110,8 @@ typedef struct _RealWoWWPInfo {
 } RealWoWWPInfo,*PRealWoWWPInfo;
 
 int rtl8168_realwow_ioctl(struct net_device *dev, struct ifreq *ifr);
-void realwow_hw_init(struct net_device *dev);
-void get_realwow_hw_version(struct net_device *dev);
-void set_realwow_d3_para(struct net_device *dev);
+void rtl8168_realwow_hw_init(struct net_device *dev);
+void rtl8168_get_realwow_hw_version(struct net_device *dev);
+void rtl8168_set_realwow_d3_para(struct net_device *dev);
 
 #endif /* _LINUX_R8168_REALWOW_H */

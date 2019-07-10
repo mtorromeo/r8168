@@ -327,7 +327,7 @@ do { \
 #define DASH_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.047.01" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.047.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
@@ -1576,6 +1576,8 @@ struct rtl8168_private {
 
         u16 phy_reg_anlpar;
 
+        u32 HwPcieSNOffset;
+
         //Dash+++++++++++++++++
         u8 HwSuppDashVer;
         u8 DASH;
@@ -1665,6 +1667,9 @@ struct rtl8168_private {
         //Realwow--------------
 #endif //ENABLE_REALWOW_SUPPORT
 
+        u32 eee_adv_t;
+        u8 eee_enabled;
+
 #ifdef ENABLE_R8168_PROCFS
         //Procfs support
         struct proc_dir_entry *proc_dir;
@@ -1749,7 +1754,7 @@ enum mcfg {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_23 (0x0015)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_26 (0x0012)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_28 (0x0019)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0018)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0055)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0003)
 
 //hwoptimize
