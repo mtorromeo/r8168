@@ -4651,8 +4651,10 @@ rtl8168_powerdown_pll(struct net_device *dev)
         }
 
         switch (tp->mcfg) {
-        case CFG_METHOD_29:
-        case CFG_METHOD_30:
+        case CFG_METHOD_14 ... CFG_METHOD_15:
+                RTL_W8(0xD0, RTL_R8(0xD0) & ~BIT_6);
+                break;
+        case CFG_METHOD_16 ... CFG_METHOD_32:
                 RTL_W8(0xD0, RTL_R8(0xD0) & ~BIT_6);
                 RTL_W8(0xF2, RTL_R8(0xF2) & ~BIT_6);
                 break;
@@ -5209,7 +5211,7 @@ static void rtl8168_gset_xmii(struct net_device *dev,
                     SUPPORTED_1000baseT_Full |
                     SUPPORTED_Autoneg |
                     SUPPORTED_TP |
-                    SUPPORTED_Pause	|
+                    SUPPORTED_Pause |
                     SUPPORTED_Asym_Pause;
 
         advertising = ADVERTISED_TP;
@@ -9348,7 +9350,8 @@ rtl8168_hw_init(struct net_device *dev)
             tp->mcfg == CFG_METHOD_27 || tp->mcfg == CFG_METHOD_28 ||
             tp->mcfg == CFG_METHOD_29 || tp->mcfg == CFG_METHOD_30 ||
             tp->mcfg == CFG_METHOD_31 || tp->mcfg == CFG_METHOD_32)
-                rtl8168_disable_ocp_phy_power_saving(dev);
+                if (!tp->dash_printer_enabled)
+                        rtl8168_disable_ocp_phy_power_saving(dev);
 
         //Set PCIE uncorrectable error status mask pcie 0x108
         csi_tmp = rtl8168_csi_read(tp, 0x108);
@@ -23966,7 +23969,7 @@ rtl8168_init_software_variable(struct net_device *dev)
 
         if (HW_DASH_SUPPORT_TYPE_2(tp))
                 tp->cmac_ioaddr = tp->mmio_addr;
-        else if	(HW_DASH_SUPPORT_TYPE_3(tp))
+        else if (HW_DASH_SUPPORT_TYPE_3(tp))
                 tp->cmac_ioaddr = tp->mapped_cmac_ioaddr;
 
         switch (tp->mcfg) {
@@ -25338,7 +25341,6 @@ rtl8168_phy_power_down(struct net_device *dev)
         case CFG_METHOD_21:
         case CFG_METHOD_22:
                 rtl8168_mdio_write(tp, MII_BMCR, BMCR_ANENABLE | BMCR_PDOWN);
-                RTL_W8(0xD0, RTL_R8(0xD0) & ~BIT_6);
                 break;
         case CFG_METHOD_23:
         case CFG_METHOD_24:
@@ -25847,7 +25849,7 @@ rtl8168_init_one(struct pci_dev *pdev,
                                    NETIF_F_RXCSUM | NETIF_F_HW_VLAN_TX | NETIF_F_HW_VLAN_RX;
                 dev->vlan_features = NETIF_F_SG | NETIF_F_IP_CSUM |
                                      NETIF_F_HIGHDMA;
-                if ((tp->mcfg != CFG_METHOD_16) && (tp->mcfg == CFG_METHOD_17)) {
+                if ((tp->mcfg != CFG_METHOD_16) && (tp->mcfg != CFG_METHOD_17)) {
                         dev->features |= NETIF_F_TSO;
                         dev->hw_features |= NETIF_F_TSO;
                         dev->vlan_features |= NETIF_F_TSO;
@@ -25870,7 +25872,7 @@ rtl8168_init_one(struct pci_dev *pdev,
                 } else {
                         dev->hw_features |= NETIF_F_IPV6_CSUM;
                         dev->features |=  NETIF_F_IPV6_CSUM;
-                        if ((tp->mcfg != CFG_METHOD_16) && (tp->mcfg == CFG_METHOD_17)) {
+                        if ((tp->mcfg != CFG_METHOD_16) && (tp->mcfg != CFG_METHOD_17)) {
                                 dev->hw_features |= NETIF_F_TSO6;
                                 dev->features |=  NETIF_F_TSO6;
                         }
@@ -27761,7 +27763,7 @@ static void rtl8168_reset_task(struct work_struct *work)
         rtl8168_rx_interrupt(dev, tp, tp->mmio_addr, &budget);
 #else
         rtl8168_rx_interrupt(dev, tp, tp->mmio_addr, budget);
-#endif	//LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+#endif  //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
 
         spin_lock_irqsave(&tp->lock, flags);
 
@@ -28649,7 +28651,7 @@ static irqreturn_t rtl8168_interrupt(int irq, void *dev_instance)
                         rtl8168_rx_interrupt(dev, tp, tp->mmio_addr, &budget);
 #else
                         rtl8168_rx_interrupt(dev, tp, tp->mmio_addr, budget);
-#endif	//LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
+#endif  //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
                         rtl8168_tx_interrupt(dev, tp, ioaddr);
 
 #ifdef ENABLE_DASH_SUPPORT
