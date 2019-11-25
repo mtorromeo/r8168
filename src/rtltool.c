@@ -97,7 +97,7 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                         return -EPERM;
 
                 spin_lock_irqsave(&tp->lock, flags);
-                my_cmd.data = rtl8168_mdio_read(tp, my_cmd.offset);
+                my_cmd.data = rtl8168_mdio_prot_read(tp, my_cmd.offset);
                 spin_unlock_irqrestore(&tp->lock, flags);
 
                 if (copy_to_user(ifr->ifr_data, &my_cmd, sizeof(my_cmd))) {
