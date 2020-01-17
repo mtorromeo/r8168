@@ -121,7 +121,7 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                         return -EPERM;
 
                 spin_lock_irqsave(&tp->lock, flags);
-                my_cmd.data = rtl8168_ephy_read(tp->mmio_addr, my_cmd.offset);
+                my_cmd.data = rtl8168_ephy_read(tp, my_cmd.offset);
                 spin_unlock_irqrestore(&tp->lock, flags);
 
                 if (copy_to_user(ifr->ifr_data, &my_cmd, sizeof(my_cmd))) {
@@ -136,7 +136,7 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                         return -EPERM;
 
                 spin_lock_irqsave(&tp->lock, flags);
-                rtl8168_ephy_write(tp->mmio_addr, my_cmd.offset, my_cmd.data);
+                rtl8168_ephy_write(tp, my_cmd.offset, my_cmd.data);
                 spin_unlock_irqrestore(&tp->lock, flags);
                 break;
 
@@ -144,7 +144,7 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                 my_cmd.data = 0;
                 if (my_cmd.len==1 || my_cmd.len==2 || my_cmd.len==4) {
                         spin_lock_irqsave(&tp->lock, flags);
-                        my_cmd.data = rtl8168_eri_read(tp->mmio_addr, my_cmd.offset, my_cmd.len, ERIAR_ExGMAC);
+                        my_cmd.data = rtl8168_eri_read(tp, my_cmd.offset, my_cmd.len, ERIAR_ExGMAC);
                         spin_unlock_irqrestore(&tp->lock, flags);
                 } else {
                         ret = -EOPNOTSUPP;
@@ -167,7 +167,7 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
 
                 if (my_cmd.len==1 || my_cmd.len==2 || my_cmd.len==4) {
                         spin_lock_irqsave(&tp->lock, flags);
-                        rtl8168_eri_write(tp->mmio_addr, my_cmd.offset, my_cmd.len, my_cmd.data, ERIAR_ExGMAC);
+                        rtl8168_eri_write(tp, my_cmd.offset, my_cmd.len, my_cmd.data, ERIAR_ExGMAC);
                         spin_unlock_irqrestore(&tp->lock, flags);
                 } else {
                         ret = -EOPNOTSUPP;
