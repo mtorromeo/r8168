@@ -1,4 +1,6 @@
 <Linux device driver for Realtek Ethernet controllers>
+This is mtorremeo's work with my patch added for kernel-5.6.
+It's been tsted on kernel-5.5 and 5.6.
 
 	This is the Linux device driver released for RealTek RTL8168B/8111B, RTL8168C/8111C, RTL8168CP/8111CP, RTL8168D/8111D, RTL8168DP/8111DP, and RTL8168E/8111E Gigabit Ethernet controllers with PCI-Express interface.
 
