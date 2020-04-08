@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2019 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2020 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -335,12 +335,12 @@ do { \
 #define DASH_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.048.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.048.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2019  Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2020  Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -358,9 +358,6 @@ This is free software, and you are welcome to redistribute it under certain cond
 
 #define R8168_MSG_DEFAULT \
     (NETIF_MSG_DRV | NETIF_MSG_PROBE | NETIF_MSG_IFUP | NETIF_MSG_IFDOWN)
-
-#define TX_BUFFS_AVAIL(tp) \
-    (tp->dirty_tx + NUM_TX_DESC - tp->cur_tx - 1)
 
 #ifdef CONFIG_R8168_NAPI
 #define rtl8168_rx_hwaccel_skb      vlan_hwaccel_receive_skb
@@ -436,6 +433,8 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define NODE_ADDRESS_SIZE 6
 
 #define SHORT_PACKET_PADDING_BUF_SIZE 256
+
+#define RTK_MAGIC_DEBUG_VALUE 0x0badbeef
 
 /* write/read MMIO register */
 #define RTL_W8(tp, reg, val8)	writeb((val8), tp->mmio_addr + (reg))

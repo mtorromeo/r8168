@@ -4,7 +4,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2019 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2020 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -4483,7 +4483,7 @@ rtl8168_get_hw_wol(struct net_device *dev)
                 tp->wol_opts |= WAKE_MCAST;
 
 out_unlock:
-        tp->wol_enabled = (tp->wol_opts) ? WOL_ENABLED : WOL_DISABLED;
+        tp->wol_enabled = (tp->wol_opts || tp->dash_printer_enabled) ? WOL_ENABLED : WOL_DISABLED;
 
         spin_unlock_irqrestore(&tp->lock, flags);
 }
@@ -4528,6 +4528,9 @@ rtl8168_set_hw_wol(struct net_device *dev, u32 wolopts)
                         options |= cfg[i].mask;
                 RTL_W8(tp, cfg[i].reg, options);
         }
+
+        if (tp->dash_printer_enabled)
+                RTL_W8(tp, Config5, RTL_R8(tp, Config5) | LanWake);
 
         rtl8168_disable_cfg9346_write(tp);
 }
@@ -4760,11 +4763,11 @@ rtl8168_set_wol(struct net_device *dev,
 
         tp->wol_opts = wol->wolopts;
 
-        tp->wol_enabled = (tp->wol_opts) ? WOL_ENABLED : WOL_DISABLED;
+        tp->wol_enabled = (tp->wol_opts || tp->dash_printer_enabled) ? WOL_ENABLED : WOL_DISABLED;
 
         spin_unlock_irqrestore(&tp->lock, flags);
 
-        device_set_wakeup_enable(&tp->pci_dev->dev, wol->wolopts);
+        device_set_wakeup_enable(&tp->pci_dev->dev, tp->wol_enabled);
 
         return 0;
 }
@@ -9714,6 +9717,7 @@ rtl8168_hw_ephy_config(struct net_device *dev)
                 rtl8168_ephy_write(tp, 0x1E, 0x20EB);
                 rtl8168_ephy_write(tp, 0x0D, 0x1666);
                 ClearPCIePhyBit(tp, 0x0B, BIT_0);
+                SetPCIePhyBit(tp, 0x1D, BIT_14);
 
                 break;
         case CFG_METHOD_29:
@@ -26431,7 +26435,7 @@ rtl8168_hw_config(struct net_device *dev)
         case CFG_METHOD_32:
         case CFG_METHOD_33:
                 csi_tmp = rtl8168_eri_read(tp, 0xDE, 1, ERIAR_ExGMAC);
-                csi_tmp &= ~BIT_0;
+                csi_tmp &= BIT_0;
                 rtl8168_eri_write(tp, 0xDE, 1, csi_tmp, ERIAR_ExGMAC);
                 break;
         }
@@ -27661,7 +27665,8 @@ rtl8168_unmap_tx_skb(struct pci_dev *pdev,
         unsigned int len = tx_skb->len;
 
         dma_unmap_single(&pdev->dev, le64_to_cpu(desc->addr), len, DMA_TO_DEVICE);
-        desc->opts1 = 0x00;
+
+        desc->opts1 = cpu_to_le32(RTK_MAGIC_DEBUG_VALUE);
         desc->opts2 = 0x00;
         desc->addr = 0x00;
         tx_skb->len = 0;
@@ -28126,6 +28131,15 @@ static int msdn_giant_send_check(struct sk_buff *skb)
 }
 #endif
 
+static bool rtl8168_tx_slots_avail(struct rtl8168_private *tp,
+                                   unsigned int nr_frags)
+{
+        unsigned int slots_avail = tp->dirty_tx + NUM_TX_DESC - tp->cur_tx;
+
+        /* A skbuff with nr_frags needs nr_frags+1 entries in the tx queue */
+        return slots_avail > nr_frags;
+}
+
 static int
 rtl8168_start_xmit(struct sk_buff *skb,
                    struct net_device *dev)
@@ -28143,7 +28157,7 @@ rtl8168_start_xmit(struct sk_buff *skb,
 
         spin_lock_irqsave(&tp->lock, flags);
 
-        if (unlikely(TX_BUFFS_AVAIL(tp) < skb_shinfo(skb)->nr_frags)) {
+        if (unlikely(!rtl8168_tx_slots_avail(tp, skb_shinfo(skb)->nr_frags))) {
                 if (netif_msg_drv(tp)) {
                         printk(KERN_ERR
                                "%s: BUG! Tx Ring full when queue awake!\n",
@@ -28155,8 +28169,14 @@ rtl8168_start_xmit(struct sk_buff *skb,
         entry = tp->cur_tx % NUM_TX_DESC;
         txd = tp->TxDescArray + entry;
 
-        if (unlikely(le32_to_cpu(txd->opts1) & DescOwn))
+        if (unlikely(le32_to_cpu(txd->opts1) & DescOwn)) {
+                if (netif_msg_drv(tp)) {
+                        printk(KERN_ERR
+                               "%s: BUG! Tx Desc is own by hardware!\n",
+                               dev->name);
+                }
                 goto err_stop;
+        }
 
         opts1 = DescOwn;
         opts2 = rtl8168_tx_vlan_tag(tp, skb);
@@ -28271,10 +28291,10 @@ rtl8168_start_xmit(struct sk_buff *skb,
 
         RTL_W8(tp, TxPoll, NPQ);    /* set polling bit */
 
-        if (TX_BUFFS_AVAIL(tp) < MAX_SKB_FRAGS) {
+        if (!rtl8168_tx_slots_avail(tp, MAX_SKB_FRAGS)) {
                 netif_stop_queue(dev);
                 smp_rmb();
-                if (TX_BUFFS_AVAIL(tp) >= MAX_SKB_FRAGS)
+                if (rtl8168_tx_slots_avail(tp, MAX_SKB_FRAGS))
                         netif_wake_queue(dev);
         }
 
@@ -28346,7 +28366,7 @@ rtl8168_tx_interrupt(struct net_device *dev,
                 tp->dirty_tx = dirty_tx;
                 smp_wmb();
                 if (netif_queue_stopped(dev) &&
-                    (TX_BUFFS_AVAIL(tp) >= MAX_SKB_FRAGS)) {
+                    (rtl8168_tx_slots_avail(tp, MAX_SKB_FRAGS))) {
                         netif_wake_queue(dev);
                 }
                 smp_rmb();
