@@ -335,7 +335,7 @@ do { \
 #define DASH_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.048.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.048.03" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
@@ -1571,6 +1571,8 @@ struct rtl8168_private {
         u32 HwFiberStat;
         u8 HwSwitchMdiToFiber;
 
+        u8 HwSuppSerDesPhyVer;
+
         u8 HwSuppPhyOcpVer;
 
         u16 NicCustLedValue;
@@ -1807,6 +1809,8 @@ void rtl8168_dash2_enable_rx(struct rtl8168_private *tp);
 void rtl8168_hw_disable_mac_mcu_bps(struct net_device *dev);
 
 #define HW_SUPPORT_CHECK_PHY_DISABLE_MODE(_M)        ((_M)->HwSuppCheckPhyDisableModeVer > 0 )
+#define HW_SUPP_SERDES_PHY(_M)        ((_M)->HwSuppSerDesPhyVer > 0)
+#define HW_HAS_WRITE_PHY_MCU_RAM_CODE(_M)        (((_M)->HwHasWrRamCodeToMicroP == TRUE) ? 1 : 0)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
 #define netdev_mc_count(dev) ((dev)->mc_count)
