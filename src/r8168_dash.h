@@ -1,10 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
 ################################################################################
 #
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2020 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2021 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -114,25 +115,23 @@ struct wakeup_pattern {
 };
 
 typedef struct _RX_DASH_FROM_FW_DESC {
-        u16 length;
-        u8 statusLowByte;
-        u8 statusHighByte;
-        u32 resv;
-        u64 BufferAddress;
+        __le16 length;
+        __le16 status;
+        __le32 resv;
+        __le64 BufferAddress;
 }
 RX_DASH_FROM_FW_DESC, *PRX_DASH_FROM_FW_DESC;
 
 typedef struct _TX_DASH_SEND_FW_DESC {
-        u16 length;
-        u8 statusLowByte;
-        u8 statusHighByte;
-        u32 resv;
-        u64 BufferAddress;
+        __le16 length;
+        __le16 status;
+        __le32 resv;
+        __le64 BufferAddress;
 }
 TX_DASH_SEND_FW_DESC, *PTX_DASH_SEND_FW_DESC;
 
 typedef struct _OSOOBHdr {
-        u32 len;
+        __le32 len;
         u8 type;
         u8 flag;
         u8 hostReqV;
@@ -177,12 +176,11 @@ RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 #define HW_DASH_SUPPORT_TYPE_2(_M)        ((_M)->HwSuppDashVer == 2)
 #define HW_DASH_SUPPORT_TYPE_3(_M)        ((_M)->HwSuppDashVer == 3)
 
-#define RECV_FROM_FW_BUF_SIZE (1520)
-#define SEND_TO_FW_BUF_SIZE (1520)
+#define RECV_FROM_FW_BUF_SIZE (2048)
+#define SEND_TO_FW_BUF_SIZE (2048)
 
 #define RX_DASH_FROM_FW_OWN BIT_15
 #define TX_DASH_SEND_FW_OWN BIT_15
-#define TX_DASH_SEND_FW_OWN_HIGHBYTE BIT_7
 
 #define TXS_CC3_0       (BIT_0|BIT_1|BIT_2|BIT_3)
 #define TXS_EXC         BIT_4

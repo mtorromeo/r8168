@@ -2,7 +2,7 @@
 /*
 ################################################################################
 #
-# r8168 is the Linux device driver released for Realtek Gigabit Ethernet
+# r8168 is the Linux device driver released for Realtek 2.5Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
 # Copyright(c) 2021 Realtek Semiconductor Corp. All rights reserved.
@@ -32,36 +32,37 @@
  *  US6,570,884, US6,115,776, and US6,327,625.
  ***********************************************************************************/
 
-#ifndef _LINUX_R8168_FIBER_H
-#define _LINUX_R8168_FIBER_H
+#ifndef _LINUX_RTL8168_FIRMWARE_H
+#define _LINUX_RTL8168_FIRMWARE_H
 
-enum {
-        FIBER_MODE_NIC_ONLY = 0,
-        FIBER_MODE_RTL8168H_RTL8211FS,
-        FIBER_MODE_RTL8168H_MDI_SWITCH_RTL8211FS,
-        FIBER_MODE_MAX
+#include <linux/device.h>
+#include <linux/firmware.h>
+
+struct rtl8168_private;
+typedef void (*rtl8168_fw_write_t)(struct rtl8168_private *tp, u16 reg, u16 val);
+typedef u32 (*rtl8168_fw_read_t)(struct rtl8168_private *tp, u16 reg);
+
+#define RTL8168_VER_SIZE		32
+
+struct rtl8168_fw {
+        rtl8168_fw_write_t phy_write;
+        rtl8168_fw_read_t phy_read;
+        rtl8168_fw_write_t mac_mcu_write;
+        rtl8168_fw_read_t mac_mcu_read;
+        const struct firmware *fw;
+        const char *fw_name;
+        struct device *dev;
+
+        char version[RTL8168_VER_SIZE];
+
+        struct rtl8168_fw_phy_action {
+                __le32 *code;
+                size_t size;
+        } phy_action;
 };
 
-enum {
-        FIBER_STAT_NOT_CHECKED = 0,
-        FIBER_STAT_CONNECT,
-        FIBER_STAT_DISCONNECT,
-        FIBER_STAT_MAX
-};
+int rtl8168_fw_request_firmware(struct rtl8168_fw *rtl_fw);
+void rtl8168_fw_release_firmware(struct rtl8168_fw *rtl_fw);
+void rtl8168_fw_write_firmware(struct rtl8168_private *tp, struct rtl8168_fw *rtl_fw);
 
-#define HW_FIBER_MODE_ENABLED(_M)        ((_M)->HwFiberModeVer > 0)
-
-
-
-void rtl8168_hw_init_fiber_nic(struct net_device *dev);
-void rtl8168_hw_fiber_nic_d3_para(struct net_device *dev);
-void rtl8168_hw_fiber_phy_config(struct net_device *dev);
-void rtl8168_hw_switch_mdi_to_fiber(struct net_device *dev);
-void rtl8168_hw_switch_mdi_to_nic(struct net_device *dev);
-unsigned int rtl8168_hw_fiber_link_ok(struct net_device *dev);
-void rtl8168_check_fiber_link_status(struct net_device *dev);
-void rtl8168_check_hw_fiber_mode_support(struct net_device *dev);
-void rtl8168_set_fiber_mode_software_variable(struct net_device *dev);
-
-
-#endif /* _LINUX_R8168_FIBER_H */
+#endif /* _LINUX_RTL8168_FIRMWARE_H */

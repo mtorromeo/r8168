@@ -1,10 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
 ################################################################################
 #
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2020 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2021 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -35,6 +36,10 @@
 #include "r8168_dash.h"
 #include "r8168_realwow.h"
 #include "r8168_fiber.h"
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
+typedef int netdev_tx_t;
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22)
 #define skb_transport_offset(skb) (skb->h.raw - skb->data)
@@ -335,12 +340,12 @@ do { \
 #define DASH_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.048.03" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.049.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2020  Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2021 Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -430,6 +435,8 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define R8168_TX_RING_BYTES (NUM_TX_DESC * sizeof(struct TxDesc))
 #define R8168_RX_RING_BYTES (NUM_RX_DESC * sizeof(struct RxDesc))
 
+#define OCP_STD_PHY_BASE	0xa400
+
 #define NODE_ADDRESS_SIZE 6
 
 #define SHORT_PACKET_PADDING_BUF_SIZE 256
@@ -490,6 +497,10 @@ This is free software, and you are welcome to redistribute it under certain cond
 
 #ifndef ADVERTISE_1000HALF
 #define ADVERTISE_1000HALF  0x100
+#endif
+
+#ifndef ETH_MIN_MTU
+#define ETH_MIN_MTU  68
 #endif
 
 /*****************************************************************************/
@@ -1173,6 +1184,7 @@ enum RTL8168_register_content {
         PMEnable    = (1 << 0), /* Power Management Enable */
 
         /* Config2 register */
+        ClkReqEn	= (1 << 7),	/* Clock Request Enable */
         PMSTS_En    = (1 << 5),
 
         /* Config3 register */
@@ -1194,6 +1206,7 @@ enum RTL8168_register_content {
         UWF     = (1 << 4), /* Accept Unicast wakeup frame */
         LanWake     = (1 << 1), /* LanWake enable/disable */
         PMEStatus   = (1 << 0), /* PME status can be reset by PCI RST# */
+        ASPM_en	    = (1 << 0),	/* ASPM enable */
 
         /* CPlusCmd */
         EnableBist  = (1 << 15),
@@ -1554,9 +1567,6 @@ struct rtl8168_private {
 
         u8 UseSwPaddingShortPkt;
 
-        void *ShortPacketEmptyBuffer;
-        dma_addr_t ShortPacketEmptyBufferPhy;
-
         u8 RequireAdcBiasPatch;
         u16 AdcBiasPatchIoffset;
 
@@ -1575,7 +1585,11 @@ struct rtl8168_private {
 
         u8 HwSuppPhyOcpVer;
 
+        u8 HwSuppAspmClkIntrLock;
+
         u16 NicCustLedValue;
+
+        u8 HwSuppUpsVer;
 
         u8 HwSuppMagicPktVer;
 
@@ -1583,11 +1597,21 @@ struct rtl8168_private {
 
         u8 random_mac;
 
-        u8 HwSuppGigaForceMode;
-
+        u16 phy_reg_aner;
         u16 phy_reg_anlpar;
+        u16 phy_reg_gbsr;
 
         u32 HwPcieSNOffset;
+
+        u8 HwSuppEsdVer;
+        u8 TestPhyOcpReg;
+        u16 BackupPhyFuseDout_15_0;
+        u16 BackupPhyFuseDout_47_32;
+        u16 BackupPhyFuseDout_63_48;
+
+        const char *fw_name;
+        struct rtl8168_fw *rtl_fw;
+        u32 ocp_base;
 
         //Dash+++++++++++++++++
         u8 HwSuppDashVer;
@@ -1618,37 +1642,29 @@ struct rtl8168_private {
 
         u8 DashFwDisableRx;
 
-        void *UnalignedSendToFwBufferVa;
         void *SendToFwBuffer ;
-        u64 SendToFwBufferPhy ;
+        dma_addr_t SendToFwBufferPhy ;
         u8 SendingToFw;
-        dma_addr_t UnalignedSendToFwBufferPa;
         PTX_DASH_SEND_FW_DESC TxDashSendFwDesc;
-        u64 TxDashSendFwDescPhy;
-        u8 *UnalignedTxDashSendFwDescVa;
+        dma_addr_t TxDashSendFwDescPhy;
         u32 SizeOfTxDashSendFwDescMemAlloc;
         u32 SizeOfTxDashSendFwDesc ;
         u32 NumTxDashSendFwDesc ;
         u32 CurrNumTxDashSendFwDesc ;
         u32 LastSendNumTxDashSendFwDesc ;
-        dma_addr_t UnalignedTxDashSendFwDescPa;
 
         u32 NumRecvFromFwBuffer ;
         u32 SizeOfRecvFromFwBuffer ;
         u32 SizeOfRecvFromFwBufferMemAlloc ;
         void *RecvFromFwBuffer ;
-        u64 RecvFromFwBufferPhy ;
+        dma_addr_t RecvFromFwBufferPhy ;
 
-        void *UnalignedRecvFromFwBufferVa;
-        dma_addr_t UnalignedRecvFromFwBufferPa;
         PRX_DASH_FROM_FW_DESC RxDashRecvFwDesc;
-        u64 RxDashRecvFwDescPhy;
-        u8 *UnalignedRxDashRecvFwDescVa;
+        dma_addr_t RxDashRecvFwDescPhy;
         u32 SizeOfRxDashRecvFwDescMemAlloc;
         u32 SizeOfRxDashRecvFwDesc ;
         u32 NumRxDashRecvFwDesc ;
         u32 CurrNumRxDashRecvFwDesc ;
-        dma_addr_t UnalignedRxDashRecvFwDescPa;
         u8 DashReqRegValue;
         u16 HostReqValue;
 
@@ -1680,6 +1696,8 @@ struct rtl8168_private {
 
         u32 eee_adv_t;
         u8 eee_enabled;
+
+        u32 dynamic_aspm_packet_count;
 
 #ifdef ENABLE_R8168_PROCFS
         //Procfs support
@@ -1773,10 +1791,14 @@ enum mcfg {
 #define HW_PATCH_SOC_LAN (BIT_0)
 #define HW_PATCH_SAMSUNG_LAN_DONGLE (BIT_2)
 
-void rtl8168_mdio_write(struct rtl8168_private *tp, u32 RegAddr, u32 value);
+#define HW_PHY_STATUS_INI       1
+#define HW_PHY_STATUS_EXT_INI   2
+#define HW_PHY_STATUS_LAN_ON    3
+
+void rtl8168_mdio_write(struct rtl8168_private *tp, u16 RegAddr, u16 value);
 void rtl8168_mdio_prot_write(struct rtl8168_private *tp, u32 RegAddr, u32 value);
 void rtl8168_mdio_prot_direct_write_phy_ocp(struct rtl8168_private *tp, u32 RegAddr, u32 value);
-u32 rtl8168_mdio_read(struct rtl8168_private *tp, u32 RegAddr);
+u32 rtl8168_mdio_read(struct rtl8168_private *tp, u16 RegAddr);
 u32 rtl8168_mdio_prot_read(struct rtl8168_private *tp, u32 RegAddr);
 u32 rtl8168_mdio_prot_direct_read_phy_ocp(struct rtl8168_private *tp, u32 RegAddr);
 void rtl8168_ephy_write(struct rtl8168_private *tp, int RegAddr, int value);
@@ -1789,7 +1811,6 @@ void rtl8168_oob_notify(struct rtl8168_private *tp, u8 cmd);
 void rtl8168_init_ring_indexes(struct rtl8168_private *tp);
 int rtl8168_eri_write(struct rtl8168_private *tp, int addr, int len, u32 value, int type);
 void rtl8168_oob_mutex_lock(struct rtl8168_private *tp);
-u32 rtl8168_mdio_read(struct rtl8168_private *tp, u32 RegAddr);
 u32 rtl8168_ocp_read(struct rtl8168_private *tp, u16 addr, u8 len);
 u32 rtl8168_ocp_read_with_oob_base_address(struct rtl8168_private *tp, u16 addr, u8 len, u32 base_address);
 u32 rtl8168_ocp_write_with_oob_base_address(struct rtl8168_private *tp, u16 addr, u8 len, u32 value, u32 base_address);
@@ -1811,6 +1832,7 @@ void rtl8168_hw_disable_mac_mcu_bps(struct net_device *dev);
 #define HW_SUPPORT_CHECK_PHY_DISABLE_MODE(_M)        ((_M)->HwSuppCheckPhyDisableModeVer > 0 )
 #define HW_SUPP_SERDES_PHY(_M)        ((_M)->HwSuppSerDesPhyVer > 0)
 #define HW_HAS_WRITE_PHY_MCU_RAM_CODE(_M)        (((_M)->HwHasWrRamCodeToMicroP == TRUE) ? 1 : 0)
+#define HW_SUPPORT_UPS_MODE(_M)        ((_M)->HwSuppUpsVer > 0)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
 #define netdev_mc_count(dev) ((dev)->mc_count)
