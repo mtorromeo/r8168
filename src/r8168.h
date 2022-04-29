@@ -5,7 +5,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2021 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2022 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -137,6 +137,10 @@ do { \
 #define RTL_ALLOC_SKB_INTR(tp, length) napi_alloc_skb(&tp->napi, length)
 #endif
 #endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)
+#define eth_random_addr(addr) random_ether_addr(addr)
+#endif //LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
@@ -340,12 +344,12 @@ do { \
 #define DASH_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.049.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.050.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2021 Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2022 Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -428,12 +432,16 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define RTL8168_LINK_TIMEOUT    (1 * HZ)
 #define RTL8168_ESD_TIMEOUT (2 * HZ)
 
-#define NUM_TX_DESC 1024    /* Number of Tx descriptor registers */
-#define NUM_RX_DESC 1024    /* Number of Rx descriptor registers */
+#define MAX_NUM_TX_DESC 1024    /* Maximum number of Tx descriptor registers */
+#define MAX_NUM_RX_DESC 1024    /* Maximum number of Rx descriptor registers */
+
+#define MIN_NUM_TX_DESC 32    /* Minimum number of Tx descriptor registers */
+#define MIN_NUM_RX_DESC 32    /* Minimum number of Rx descriptor registers */
+
+#define NUM_TX_DESC 256    /* Number of Tx descriptor registers */
+#define NUM_RX_DESC 256    /* Number of Rx descriptor registers */
 
 #define RX_BUF_SIZE 0x05F3  /* 0x05F3 = 1522bye + 1 */
-#define R8168_TX_RING_BYTES (NUM_TX_DESC * sizeof(struct TxDesc))
-#define R8168_RX_RING_BYTES (NUM_RX_DESC * sizeof(struct RxDesc))
 
 #define OCP_STD_PHY_BASE	0xa400
 
@@ -1467,6 +1475,15 @@ struct pci_resource {
         u32 pci_sn_h;
 };
 
+/* Flow Control Settings */
+enum rtl8168_fc_mode {
+        rtl8168_fc_none = 0,
+        rtl8168_fc_rx_pause,
+        rtl8168_fc_tx_pause,
+        rtl8168_fc_full,
+        rtl8168_fc_default
+};
+
 struct rtl8168_private {
         void __iomem *mmio_addr;    /* memory map physical address */
         struct pci_dev *pci_dev;    /* Index of PCI device */
@@ -1490,12 +1507,14 @@ struct rtl8168_private {
         u32 cur_tx; /* Index into the Tx descriptor buffer of next Rx pkt. */
         u32 dirty_rx;
         u32 dirty_tx;
+        u32 num_rx_desc; /* Number of Rx descriptor registers */
+        u32 num_tx_desc; /* Number of Tx descriptor registers */
         struct TxDesc *TxDescArray; /* 256-aligned Tx descriptor ring */
         struct RxDesc *RxDescArray; /* 256-aligned Rx descriptor ring */
         dma_addr_t TxPhyAddr;
         dma_addr_t RxPhyAddr;
-        struct sk_buff *Rx_skbuff[NUM_RX_DESC]; /* Rx data buffers */
-        struct ring_info tx_skb[NUM_TX_DESC];   /* Tx data buffers */
+        struct sk_buff *Rx_skbuff[MAX_NUM_RX_DESC]; /* Rx data buffers */
+        struct ring_info tx_skb[MAX_NUM_TX_DESC];   /* Tx data buffers */
         unsigned rx_buf_sz;
         struct timer_list esd_timer;
         struct timer_list link_timer;
@@ -1523,6 +1542,7 @@ struct rtl8168_private {
         u8  duplex;
         u32 speed;
         u32 advertising;
+        enum rtl8168_fc_mode fcpause;
         u16 eeprom_len;
         u16 cur_page;
         u32 bios_setting;
@@ -1606,6 +1626,7 @@ struct rtl8168_private {
         u8 HwSuppEsdVer;
         u8 TestPhyOcpReg;
         u16 BackupPhyFuseDout_15_0;
+        u16 BackupPhyFuseDout_31_16;
         u16 BackupPhyFuseDout_47_32;
         u16 BackupPhyFuseDout_63_48;
 
@@ -1746,6 +1767,8 @@ enum mcfg {
         CFG_METHOD_31,
         CFG_METHOD_32,
         CFG_METHOD_33,
+        CFG_METHOD_34,
+        CFG_METHOD_35,
         CFG_METHOD_MAX,
         CFG_METHOD_DEFAULT = 0xFF
 };
@@ -1786,6 +1809,7 @@ enum mcfg {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_28 (0x0019)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0055)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0003)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_35 (0x0004)
 
 //hwoptimize
 #define HW_PATCH_SOC_LAN (BIT_0)
