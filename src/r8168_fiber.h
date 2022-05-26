@@ -50,6 +50,12 @@ enum {
         FIBER_STAT_MAX
 };
 
+enum {
+        FIBER_LED_MODE_DEFAULT = 0,
+        FIBER_LED_MODE_1,
+        FIBER_LED_MODE_MAX
+};
+
 #define HW_FIBER_MODE_ENABLED(_M)        ((_M)->HwFiberModeVer > 0)
 #define HW_FIBER_STATUS_CONNECTED(_M)        (((_M)->HwFiberStat == FIBER_STAT_CONNECT_EEPROM) || ((_M)->HwFiberStat == FIBER_STAT_CONNECT_GPO))
 #define HW_FIBER_STATUS_DISCONNECTED(_M)        ((_M)->HwFiberStat == FIBER_STAT_DISCONNECT)

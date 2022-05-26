@@ -344,7 +344,7 @@ do { \
 #define DASH_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.050.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.050.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
@@ -1599,6 +1599,7 @@ struct rtl8168_private {
 
         u32 HwFiberModeVer;
         u32 HwFiberStat;
+        u8 HwFiberLedMode;
         u8 HwSwitchMdiToFiber;
 
         u8 HwSuppSerDesPhyVer;
@@ -1781,7 +1782,7 @@ enum mcfg {
 #define NIC_MAX_PHYS_BUF_COUNT_LSO2     (16*4)
 
 #define GTTCPHO_SHIFT                   18
-#define GTTCPHO_MAX                     0x7fU
+#define GTTCPHO_MAX                     0x70U
 #define GTPKTSIZE_MAX                   0x3ffffU
 #define TCPHO_SHIFT                     18
 #define TCPHO_MAX                       0x3ffU
