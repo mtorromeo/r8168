@@ -1922,8 +1922,8 @@ static void mdio_real_direct_write_phy_ocp(struct rtl8168_private *tp,
         data32 |= OCPR_Write | value;
 
         RTL_W32(tp, PHYOCP, data32);
-        for (i = 0; i < 100; i++) {
-                udelay(1);
+        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                udelay(R8168_CHANNEL_WAIT_TIME);
 
                 if (!(RTL_R32(tp, PHYOCP) & OCPR_Flag))
                         break;
@@ -2005,12 +2005,12 @@ static void mdio_real_write(struct rtl8168_private *tp,
                                 (RegAddr & PHYAR_Reg_Mask) << PHYAR_Reg_shift |
                                 (value & PHYAR_Data_Mask));
 
-                        for (i = 0; i < 10; i++) {
-                                udelay(100);
+                        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                                udelay(R8168_CHANNEL_WAIT_TIME);
 
                                 /* Check if the RTL8168 has completed writing to the specified MII register */
                                 if (!(RTL_R32(tp, PHYAR) & PHYAR_Flag)) {
-                                        udelay(20);
+                                        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
                                         break;
                                 }
                         }
@@ -2061,8 +2061,8 @@ static u32 mdio_real_direct_read_phy_ocp(struct rtl8168_private *tp,
         data32 <<= OCPR_Addr_Reg_shift;
 
         RTL_W32(tp, PHYOCP, data32);
-        for (i = 0; i < 100; i++) {
-                udelay(1);
+        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                udelay(R8168_CHANNEL_WAIT_TIME);
 
                 if (RTL_R32(tp, PHYOCP) & OCPR_Flag)
                         break;
@@ -2145,13 +2145,13 @@ u32 mdio_real_read(struct rtl8168_private *tp,
                         RTL_W32(tp, PHYAR,
                                 PHYAR_Read | (RegAddr & PHYAR_Reg_Mask) << PHYAR_Reg_shift);
 
-                        for (i = 0; i < 10; i++) {
-                                udelay(100);
+                        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                                udelay(R8168_CHANNEL_WAIT_TIME);
 
                                 /* Check if the RTL8168 has completed retrieving data from the specified MII register */
                                 if (RTL_R32(tp, PHYAR) & PHYAR_Flag) {
                                         value = RTL_R32(tp, PHYAR) & PHYAR_Data_Mask;
-                                        udelay(20);
+                                        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
                                         break;
                                 }
                         }
@@ -2323,8 +2323,8 @@ static u32 real_ocp_read(struct rtl8168_private *tp, u16 addr, u8 len)
 
                 RTL_W32(tp, OCPAR, (0x0F<<12) | (addr&0xFFF));
 
-                for (i = 0; i < 20; i++) {
-                        udelay(100);
+                for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                        udelay(R8168_CHANNEL_WAIT_TIME);
                         if (RTL_R32(tp, OCPAR) & OCPAR_Flag)
                                 break;
                 }
@@ -2346,7 +2346,7 @@ static u32 real_ocp_read(struct rtl8168_private *tp, u16 addr, u8 len)
                 }
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return value2;
 }
@@ -2393,8 +2393,8 @@ static int real_ocp_write(struct rtl8168_private *tp, u16 addr, u8 len, u32 valu
                 RTL_W32(tp, OCPDR, value1);
                 RTL_W32(tp, OCPAR, OCPAR_Flag | (0x0F<<12) | (addr&0xFFF));
 
-                for (i = 0; i < 10; i++) {
-                        udelay(100);
+                for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                        udelay(R8168_CHANNEL_WAIT_TIME);
 
                         /* Check if the RTL8168 has completed ERI write */
                         if (!(RTL_R32(tp, OCPAR) & OCPAR_Flag))
@@ -2410,7 +2410,7 @@ static int real_ocp_write(struct rtl8168_private *tp, u16 addr, u8 len, u32 valu
                 }
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return 0;
 }
@@ -2634,36 +2634,56 @@ static void rtl8168_dash2_disable_txrx(struct net_device *dev)
         }
 }
 
-void rtl8168_ephy_write(struct rtl8168_private *tp, int RegAddr, int value)
+static u8 rtl8168_check_ephy_addr(struct rtl8168_private *tp, int addr)
+{
+        if ( tp->mcfg != CFG_METHOD_35) goto exit;
+
+        if (addr & (BIT_6 | BIT_5))
+                rtl8168_clear_and_set_mcu_ocp_bit(tp, 0xDE28,
+                                                  (BIT_1 | BIT_0),
+                                                  (addr >> 5) & (BIT_1 | BIT_0));
+
+        addr &= 0x1F;
+
+exit:
+        return addr;
+}
+
+static void _rtl8168_ephy_write(struct rtl8168_private *tp, int addr, int value)
 {
         int i;
 
         RTL_W32(tp, EPHYAR,
                 EPHYAR_Write |
-                (RegAddr & EPHYAR_Reg_Mask) << EPHYAR_Reg_shift |
+                (addr & EPHYAR_Reg_Mask) << EPHYAR_Reg_shift |
                 (value & EPHYAR_Data_Mask));
 
-        for (i = 0; i < 10; i++) {
-                udelay(100);
+        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                udelay(R8168_CHANNEL_WAIT_TIME);
 
                 /* Check if the RTL8168 has completed EPHY write */
                 if (!(RTL_R32(tp, EPHYAR) & EPHYAR_Flag))
                         break;
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 }
 
-u16 rtl8168_ephy_read(struct rtl8168_private *tp, int RegAddr)
+void rtl8168_ephy_write(struct rtl8168_private *tp, int addr, int value)
+{
+        _rtl8168_ephy_write(tp, rtl8168_check_ephy_addr(tp, addr), value);
+}
+
+static u16 _rtl8168_ephy_read(struct rtl8168_private *tp, int addr)
 {
         int i;
         u16 value = 0xffff;
 
         RTL_W32(tp, EPHYAR,
-                EPHYAR_Read | (RegAddr & EPHYAR_Reg_Mask) << EPHYAR_Reg_shift);
+                EPHYAR_Read | (addr & EPHYAR_Reg_Mask) << EPHYAR_Reg_shift);
 
-        for (i = 0; i < 10; i++) {
-                udelay(100);
+        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                udelay(R8168_CHANNEL_WAIT_TIME);
 
                 /* Check if the RTL8168 has completed EPHY read */
                 if (RTL_R32(tp, EPHYAR) & EPHYAR_Flag) {
@@ -2672,9 +2692,14 @@ u16 rtl8168_ephy_read(struct rtl8168_private *tp, int RegAddr)
                 }
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return value;
+}
+
+u16 rtl8168_ephy_read(struct rtl8168_private *tp, int addr)
+{
+        return _rtl8168_ephy_read(tp, rtl8168_check_ephy_addr(tp, addr));
 }
 
 static void ClearAndSetPCIePhyBit(struct rtl8168_private *tp, u8 addr, u16 clearmask, u16 setmask)
@@ -2732,8 +2757,8 @@ rtl8168_csi_other_fun_read(struct rtl8168_private *tp,
 
         RTL_W32(tp, CSIAR, cmd);
 
-        for (i = 0; i < 10; i++) {
-                udelay(100);
+        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                udelay(R8168_CHANNEL_WAIT_TIME);
 
                 /* Check if the RTL8168 has completed CSI read */
                 if (RTL_R32(tp, CSIAR) & CSIAR_Flag) {
@@ -2742,7 +2767,7 @@ rtl8168_csi_other_fun_read(struct rtl8168_private *tp,
                 }
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return value;
 }
@@ -2774,15 +2799,15 @@ rtl8168_csi_other_fun_write(struct rtl8168_private *tp,
 
         RTL_W32(tp, CSIAR, cmd);
 
-        for (i = 0; i < 10; i++) {
-                udelay(100);
+        for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                udelay(R8168_CHANNEL_WAIT_TIME);
 
                 /* Check if the RTL8168 has completed CSI write */
                 if (!(RTL_R32(tp, CSIAR) & CSIAR_Flag))
                         break;
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 }
 
 static u32
@@ -2837,7 +2862,7 @@ rtl8168_csi_fun0_read_byte(struct rtl8168_private *tp,
 
                 RegAlignAddr = addr & ~(0x3);
                 ShiftByte = addr & (0x3);
-                TmpUlong = rtl8168_csi_other_fun_read(tp, 0, addr);
+                TmpUlong = rtl8168_csi_other_fun_read(tp, 0, RegAlignAddr);
                 TmpUlong >>= (8*ShiftByte);
                 RetVal = (u8)TmpUlong;
         } else {
@@ -2846,7 +2871,7 @@ rtl8168_csi_fun0_read_byte(struct rtl8168_private *tp,
                 pci_read_config_byte(pdev, addr, &RetVal);
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return RetVal;
 }
@@ -2875,7 +2900,7 @@ rtl8168_csi_fun0_write_byte(struct rtl8168_private *tp,
                 pci_write_config_byte(pdev, addr, value);
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 }
 
 static void
@@ -3045,8 +3070,8 @@ u32 rtl8168_eri_read_with_oob_base_address(struct rtl8168_private *tp, int addr,
 
                 RTL_W32(tp, ERIAR, eri_cmd);
 
-                for (i = 0; i < 10; i++) {
-                        udelay(100);
+                for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                        udelay(R8168_CHANNEL_WAIT_TIME);
 
                         /* Check if the RTL8168 has completed ERI read */
                         if (RTL_R32(tp, ERIAR) & ERIAR_Flag)
@@ -3070,7 +3095,7 @@ u32 rtl8168_eri_read_with_oob_base_address(struct rtl8168_private *tp, int addr,
                 }
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return value2;
 }
@@ -3119,8 +3144,8 @@ int rtl8168_eri_write_with_oob_base_address(struct rtl8168_private *tp, int addr
 
                 RTL_W32(tp, ERIAR, eri_cmd);
 
-                for (i = 0; i < 10; i++) {
-                        udelay(100);
+                for (i = 0; i < R8168_CHANNEL_WAIT_COUNT; i++) {
+                        udelay(R8168_CHANNEL_WAIT_TIME);
 
                         /* Check if the RTL8168 has completed ERI write */
                         if (!(RTL_R32(tp, ERIAR) & ERIAR_Flag))
@@ -3136,7 +3161,7 @@ int rtl8168_eri_write_with_oob_base_address(struct rtl8168_private *tp, int addr
                 }
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return 0;
 }
@@ -3714,9 +3739,9 @@ static void rtl8168_mac_loopback_test(struct rtl8168_private *tp)
         txd->opts2 = 0;
         while (1) {
                 memset(tmpAddr, pattern++, len - 14);
-                pci_dma_sync_single_for_device(tp->pci_dev,
-                                               le64_to_cpu(mapping),
-                                               len, DMA_TO_DEVICE);
+                dma_sync_single_for_device(&tp->pci_dev->dev,
+                                           le64_to_cpu(mapping),
+                                           len, DMA_TO_DEVICE);
                 txd->opts1 = cpu_to_le32(DescOwn | FirstFrag | LastFrag | len);
 
                 RTL_W32(tp, RxConfig, RTL_R32(tp, RxConfig)  | AcceptMyPhys);
@@ -3742,7 +3767,7 @@ static void rtl8168_mac_loopback_test(struct rtl8168_private *tp)
                 if (rx_len == len) {
                         dma_sync_single_for_cpu(tp_to_dev(tp), le64_to_cpu(rxd->addr), tp->rx_buf_sz, DMA_FROM_DEVICE);
                         i = memcmp(skb->data, rx_skb->data, rx_len);
-                        pci_dma_sync_single_for_device(tp->pci_dev, le64_to_cpu(rxd->addr), tp->rx_buf_sz, DMA_FROM_DEVICE);
+                        dma_sync_single_for_device(&tp->pci_dev->dev, le64_to_cpu(rxd->addr), tp->rx_buf_sz, DMA_FROM_DEVICE);
                         if (i == 0) {
 //              dev_printk(KERN_INFO, tp_to_dev(tp), "loopback test finished\n",rx_len,len);
                                 break;
@@ -4593,10 +4618,7 @@ rtl8168_enable_pci_offset_180(struct rtl8168_private *tp)
 static void
 rtl8168_init_pci_offset_180(struct rtl8168_private *tp)
 {
-        if (tp->org_pci_offset_180 & (BIT_0|BIT_1))
-                rtl8168_enable_pci_offset_180(tp);
-        else
-                rtl8168_disable_pci_offset_180(tp);
+        rtl8168_enable_pci_offset_180(tp);
 }
 
 static void
@@ -4938,32 +4960,30 @@ rtl8168_set_wol_link_speed(struct net_device *dev)
         giga_ctrl = rtl8168_mdio_read(tp, MII_CTRL1000);
         giga_ctrl &= ~(ADVERTISE_1000HALF | ADVERTISE_1000FULL);
 
-        aner = anlpar = gbsr = 0;
+        aner = tp->phy_reg_aner;
+        anlpar = tp->phy_reg_anlpar;
+        gbsr = tp->phy_reg_gbsr;
         if (tp->link_ok(dev)) {
                 aner = rtl8168_mdio_read(tp, MII_EXPANSION);
                 anlpar = rtl8168_mdio_read(tp, MII_LPA);
                 gbsr = rtl8168_mdio_read(tp, MII_STAT1000);
-        } else {
-                if (netif_running(dev)) {
-                        aner = tp->phy_reg_aner;
-                        anlpar = tp->phy_reg_anlpar;
-                        gbsr = tp->phy_reg_gbsr;
-                }
         }
 
+        adv = tp->advertising;
         if ((aner | anlpar | gbsr) == 0) {
                 int auto_nego_tmp = 0;
-                adv = tp->advertising;
-                if ((adv & ADVERTISED_10baseT_Half) && (anlpar & LPA_10HALF))
+
+                if (adv & ADVERTISED_10baseT_Half)
                         auto_nego_tmp |= ADVERTISE_10HALF;
-                if ((adv & ADVERTISED_10baseT_Full) && (anlpar & LPA_10FULL))
+                if (adv & ADVERTISED_10baseT_Full)
                         auto_nego_tmp |= ADVERTISE_10FULL;
-                if ((adv & ADVERTISED_100baseT_Half) && (anlpar & LPA_100HALF))
+                if (adv & ADVERTISED_100baseT_Half)
                         auto_nego_tmp |= ADVERTISE_100HALF;
-                if ((adv & ADVERTISED_100baseT_Full) && (anlpar & LPA_100FULL))
+                if (adv & ADVERTISED_100baseT_Full)
                         auto_nego_tmp |= ADVERTISE_100FULL;
 
-                if (auto_nego_tmp == 0)	goto exit;
+                if (auto_nego_tmp == 0)
+                        goto exit;
 
                 auto_nego |= auto_nego_tmp;
                 goto skip_check_lpa;
@@ -4971,7 +4991,6 @@ rtl8168_set_wol_link_speed(struct net_device *dev)
         if (!(aner & EXPANSION_NWAY))
                 goto exit;
 
-        adv = tp->advertising;
         if ((adv & ADVERTISED_10baseT_Half) && (anlpar & LPA_10HALF))
                 auto_nego |= ADVERTISE_10HALF;
         else if ((adv & ADVERTISED_10baseT_Full) && (anlpar & LPA_10FULL))
@@ -5012,11 +5031,6 @@ rtl8168_powerdown_pll(struct net_device *dev)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-#ifdef ENABLE_FIBER_SUPPORT
-        if (HW_FIBER_MODE_ENABLED(tp))
-                return;
-#endif //ENABLE_FIBER_SUPPORT
-
         if (tp->wol_enabled == WOL_ENABLED || tp->DASH || tp->EnableKCPOffload) {
                 rtl8168_set_hw_wol(dev, tp->wol_opts);
 
@@ -5037,6 +5051,11 @@ rtl8168_powerdown_pll(struct net_device *dev)
                 /* Enable the PME and clear the status */
                 rtl8168_set_pci_pme(tp, 1);
 
+#ifdef ENABLE_FIBER_SUPPORT
+                if (HW_FIBER_MODE_ENABLED(tp))
+                        return;
+#endif //ENABLE_FIBER_SUPPORT
+
                 if (HW_SUPP_SERDES_PHY(tp))
                         return;
 
@@ -5046,6 +5065,13 @@ rtl8168_powerdown_pll(struct net_device *dev)
 
                 return;
         }
+
+        rtl8168_set_hw_wol(dev, 0);
+
+#ifdef ENABLE_FIBER_SUPPORT
+        if (HW_FIBER_MODE_ENABLED(tp))
+                return;
+#endif //ENABLE_FIBER_SUPPORT
 
         if (tp->DASH)
                 return;
@@ -5901,7 +5927,7 @@ rtl8168_wait_for_quiescence(struct net_device *dev)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        synchronize_irq(dev->irq);
+        synchronize_irq(tp->irq);
 
         /* Wait for any pending NAPI task to complete */
 #ifdef CONFIG_R8168_NAPI
@@ -7374,7 +7400,7 @@ static u8 rtl8168_efuse_read(struct rtl8168_private *tp, u16 reg)
                 }
         }
 
-        udelay(20);
+        udelay(R8168_CHANNEL_EXIT_DELAY_TIME);
 
         return efuse_data;
 }
@@ -8972,7 +8998,81 @@ rtl8168_set_mac_mcu_8168h_2(struct net_device *dev)
 static void
 rtl8168_set_mac_mcu_8168h_3(struct net_device *dev)
 {
+        struct rtl8168_private *tp = netdev_priv(dev);
+        u16 i;
+        static const u16 mcu_patch_code_8168h_3[] = {
+                0xE008, 0xE00A, 0xE00C, 0xE00E, 0xE010, 0xE039, 0xE03B, 0xE064, 0xC602,
+                0xBE00, 0x0000, 0xC602, 0xBE00, 0x0000, 0xC602, 0xBE00, 0x0000, 0xC602,
+                0xBE00, 0x0000, 0xC727, 0x76E2, 0x49EE, 0xF1FD, 0x1E00, 0x8EE0, 0x1E1C,
+                0x8EE2, 0x76E2, 0x49EE, 0xF1FE, 0xC61D, 0x8EE0, 0x1E1D, 0x486F, 0x8EE2,
+                0x76E2, 0x49EE, 0xF12C, 0xC716, 0x76E0, 0x48E8, 0x48E9, 0x48EA, 0x48EB,
+                0x48EC, 0x9EE0, 0xC709, 0xC609, 0x9EF4, 0xC608, 0x9EF6, 0xB007, 0xC602,
+                0xBE00, 0x0ACC, 0xE000, 0x03BF, 0x07FF, 0xDE24, 0x3200, 0xE096, 0xC602,
+                0xBE00, 0x0000, 0x8EE6, 0xC726, 0x76E2, 0x49EE, 0xF1FD, 0x1E00, 0x8EE0,
+                0x1E1C, 0x8EE2, 0x76E2, 0x49EE, 0xF1FE, 0xC61C, 0x8EE0, 0x1E1D, 0x486F,
+                0x8EE2, 0x76E2, 0x49EE, 0xF1FE, 0xC715, 0x76E0, 0x48E8, 0x48E9, 0x48EA,
+                0x48EB, 0x48EC, 0x9EE0, 0xC708, 0xC608, 0x9EF4, 0xC607, 0x9EF6, 0xC602,
+                0xBE00, 0x0ABE, 0xE000, 0x03BF, 0x07FF, 0xDE24, 0x3200, 0xE096, 0xC602,
+                0xBE00, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000, 0x0000,
+                0x0000, 0x0000, 0x0000, 0x0000, 0x6838, 0x0A16, 0x0901, 0x101C
+        };
+
         rtl8168_hw_disable_mac_mcu_bps(dev);
+
+        for (i = 0; i < ARRAY_SIZE(mcu_patch_code_8168h_3); i++) {
+                rtl8168_mac_ocp_write(tp, 0xF800 + i * 2, mcu_patch_code_8168h_3[i]);
+        }
+
+        rtl8168_mac_ocp_write(tp, 0xFC26, 0x8000);
+
+        rtl8168_mac_ocp_write(tp, 0xFC30, 0x0ACA);
+
+        rtl8168_clear_mcu_ocp_bit(tp, 0xD438, BIT_3);
+
+        rtl8168_mac_ocp_write(tp, 0xFC38, 0x0010);
 }
 
 static void
@@ -9422,6 +9522,8 @@ rtl8168_hw_init(struct net_device *dev)
 
         if (s0_magic_packet == 1)
                 rtl8168_enable_magic_packet(dev);
+        else
+                rtl8168_disable_magic_packet(dev);
 
 #ifdef ENABLE_USE_FIRMWARE_FILE
         if (tp->rtl_fw &&
@@ -9784,9 +9886,13 @@ rtl8168_hw_ephy_config(struct net_device *dev)
 
                 break;
         case CFG_METHOD_35:
+                rtl8168_clear_mcu_ocp_bit(tp, 0xDE38, BIT_2);
+
+                ClearPCIePhyBit(tp, 0x24, BIT_9);
+
                 rtl8168_clear_mcu_ocp_bit(tp, 0xDE28, (BIT_1 | BIT_0));
 
-                rtl8168_set_mcu_ocp_bit(tp, 0xDE38, (BIT_2));
+                rtl8168_set_mcu_ocp_bit(tp, 0xDE38, BIT_2);
 
                 break;
         }
@@ -21259,6 +21365,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
 
         rtl8168_set_phy_mcu_patch_request(tp);
 
+
         rtl8168_mdio_write(tp, 0x1f, 0x0A43);
         rtl8168_mdio_write(tp, 0x13, 0x8042);
         rtl8168_mdio_write(tp, 0x14, 0x3800);
@@ -21294,13 +21401,13 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x8466);
         rtl8168_mdio_write(tp, 0x14, 0xaf84);
         rtl8168_mdio_write(tp, 0x14, 0xcdaf);
-        rtl8168_mdio_write(tp, 0x14, 0x8736);
+        rtl8168_mdio_write(tp, 0x14, 0x873c);
         rtl8168_mdio_write(tp, 0x14, 0xaf87);
-        rtl8168_mdio_write(tp, 0x14, 0x39af);
-        rtl8168_mdio_write(tp, 0x14, 0x8739);
+        rtl8168_mdio_write(tp, 0x14, 0x3faf);
+        rtl8168_mdio_write(tp, 0x14, 0x8760);
         rtl8168_mdio_write(tp, 0x14, 0xaf87);
-        rtl8168_mdio_write(tp, 0x14, 0x39af);
-        rtl8168_mdio_write(tp, 0x14, 0x8739);
+        rtl8168_mdio_write(tp, 0x14, 0x60af);
+        rtl8168_mdio_write(tp, 0x14, 0x8760);
         rtl8168_mdio_write(tp, 0x14, 0xef79);
         rtl8168_mdio_write(tp, 0x14, 0xfb89);
         rtl8168_mdio_write(tp, 0x14, 0xe987);
@@ -21347,7 +21454,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x3719);
         rtl8168_mdio_write(tp, 0x14, 0x19ae);
         rtl8168_mdio_write(tp, 0x14, 0xcfbf);
-        rtl8168_mdio_write(tp, 0x14, 0x8763);
+        rtl8168_mdio_write(tp, 0x14, 0x878a);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdc3c);
         rtl8168_mdio_write(tp, 0x14, 0x0005);
@@ -21369,28 +21476,28 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x5fd4);
         rtl8168_mdio_write(tp, 0x14, 0x0003);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x7502);
+        rtl8168_mdio_write(tp, 0x14, 0x9c02);
         rtl8168_mdio_write(tp, 0x14, 0x4498);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x7202);
+        rtl8168_mdio_write(tp, 0x14, 0x9902);
         rtl8168_mdio_write(tp, 0x14, 0x4a5f);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x6602);
+        rtl8168_mdio_write(tp, 0x14, 0x8d02);
         rtl8168_mdio_write(tp, 0x14, 0x4a5f);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x6902);
+        rtl8168_mdio_write(tp, 0x14, 0x9002);
         rtl8168_mdio_write(tp, 0x14, 0x44dc);
         rtl8168_mdio_write(tp, 0x14, 0xad28);
         rtl8168_mdio_write(tp, 0x14, 0xf7bf);
-        rtl8168_mdio_write(tp, 0x14, 0x876f);
+        rtl8168_mdio_write(tp, 0x14, 0x8796);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdcad);
         rtl8168_mdio_write(tp, 0x14, 0x28f7);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x6c02);
+        rtl8168_mdio_write(tp, 0x14, 0x9302);
         rtl8168_mdio_write(tp, 0x14, 0x4a5f);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x6c02);
+        rtl8168_mdio_write(tp, 0x14, 0x9302);
         rtl8168_mdio_write(tp, 0x14, 0x4a56);
         rtl8168_mdio_write(tp, 0x14, 0xbf46);
         rtl8168_mdio_write(tp, 0x14, 0x5c02);
@@ -21415,12 +21522,12 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x3c00);
         rtl8168_mdio_write(tp, 0x14, 0x03aa);
         rtl8168_mdio_write(tp, 0x14, 0x2cbf);
-        rtl8168_mdio_write(tp, 0x14, 0x8769);
+        rtl8168_mdio_write(tp, 0x14, 0x8790);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdcad);
         rtl8168_mdio_write(tp, 0x14, 0x2823);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x6f02);
+        rtl8168_mdio_write(tp, 0x14, 0x9602);
         rtl8168_mdio_write(tp, 0x14, 0x44dc);
         rtl8168_mdio_write(tp, 0x14, 0xad28);
         rtl8168_mdio_write(tp, 0x14, 0x1a02);
@@ -21431,10 +21538,10 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x49e5);
         rtl8168_mdio_write(tp, 0x14, 0xad50);
         rtl8168_mdio_write(tp, 0x14, 0xf7bf);
-        rtl8168_mdio_write(tp, 0x14, 0x876c);
+        rtl8168_mdio_write(tp, 0x14, 0x8793);
         rtl8168_mdio_write(tp, 0x14, 0x024a);
         rtl8168_mdio_write(tp, 0x14, 0x5fbf);
-        rtl8168_mdio_write(tp, 0x14, 0x876c);
+        rtl8168_mdio_write(tp, 0x14, 0x8793);
         rtl8168_mdio_write(tp, 0x14, 0x024a);
         rtl8168_mdio_write(tp, 0x14, 0x56ef);
         rtl8168_mdio_write(tp, 0x14, 0x95ff);
@@ -21446,7 +21553,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x15ad);
         rtl8168_mdio_write(tp, 0x14, 0x2406);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x6002);
+        rtl8168_mdio_write(tp, 0x14, 0x8702);
         rtl8168_mdio_write(tp, 0x14, 0x4a56);
         rtl8168_mdio_write(tp, 0x14, 0xef96);
         rtl8168_mdio_write(tp, 0x14, 0xfefc);
@@ -21465,11 +21572,11 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xf700);
         rtl8168_mdio_write(tp, 0x14, 0xae12);
         rtl8168_mdio_write(tp, 0x14, 0x0286);
-        rtl8168_mdio_write(tp, 0x14, 0x9702);
+        rtl8168_mdio_write(tp, 0x14, 0x9d02);
         rtl8168_mdio_write(tp, 0x14, 0x8565);
         rtl8168_mdio_write(tp, 0x14, 0x0285);
         rtl8168_mdio_write(tp, 0x14, 0x9d02);
-        rtl8168_mdio_write(tp, 0x14, 0x865a);
+        rtl8168_mdio_write(tp, 0x14, 0x8660);
         rtl8168_mdio_write(tp, 0x14, 0xae04);
         rtl8168_mdio_write(tp, 0x14, 0x10e4);
         rtl8168_mdio_write(tp, 0x14, 0x87f9);
@@ -21486,17 +21593,17 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xe187);
         rtl8168_mdio_write(tp, 0x14, 0xecef);
         rtl8168_mdio_write(tp, 0x14, 0x64bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8748);
+        rtl8168_mdio_write(tp, 0x14, 0x876f);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdc1b);
         rtl8168_mdio_write(tp, 0x14, 0x46aa);
         rtl8168_mdio_write(tp, 0x14, 0x0abf);
-        rtl8168_mdio_write(tp, 0x14, 0x874b);
+        rtl8168_mdio_write(tp, 0x14, 0x8772);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdc1b);
         rtl8168_mdio_write(tp, 0x14, 0x46ab);
         rtl8168_mdio_write(tp, 0x14, 0x06bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8745);
+        rtl8168_mdio_write(tp, 0x14, 0x876c);
         rtl8168_mdio_write(tp, 0x14, 0x024a);
         rtl8168_mdio_write(tp, 0x14, 0x5ffe);
         rtl8168_mdio_write(tp, 0x14, 0xef96);
@@ -21515,7 +21622,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x0285);
         rtl8168_mdio_write(tp, 0x14, 0xc9ae);
         rtl8168_mdio_write(tp, 0x14, 0x0d02);
-        rtl8168_mdio_write(tp, 0x14, 0x860d);
+        rtl8168_mdio_write(tp, 0x14, 0x8613);
         rtl8168_mdio_write(tp, 0x14, 0xae08);
         rtl8168_mdio_write(tp, 0x14, 0xe287);
         rtl8168_mdio_write(tp, 0x14, 0xf7f6);
@@ -21528,7 +21635,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xfafb);
         rtl8168_mdio_write(tp, 0x14, 0xef79);
         rtl8168_mdio_write(tp, 0x14, 0xfbbf);
-        rtl8168_mdio_write(tp, 0x14, 0x8748);
+        rtl8168_mdio_write(tp, 0x14, 0x876f);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdcef);
         rtl8168_mdio_write(tp, 0x14, 0x64e2);
@@ -21544,11 +21651,14 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xf636);
         rtl8168_mdio_write(tp, 0x14, 0xe687);
         rtl8168_mdio_write(tp, 0x14, 0xf7ae);
-        rtl8168_mdio_write(tp, 0x14, 0x13e2);
+        rtl8168_mdio_write(tp, 0x14, 0x19e2);
         rtl8168_mdio_write(tp, 0x14, 0x87f7);
         rtl8168_mdio_write(tp, 0x14, 0xf736);
         rtl8168_mdio_write(tp, 0x14, 0xe687);
-        rtl8168_mdio_write(tp, 0x14, 0xf702);
+        rtl8168_mdio_write(tp, 0x14, 0xf700);
+        rtl8168_mdio_write(tp, 0x14, 0x00ae);
+        rtl8168_mdio_write(tp, 0x14, 0x0200);
+        rtl8168_mdio_write(tp, 0x14, 0x0002);
         rtl8168_mdio_write(tp, 0x14, 0x49ca);
         rtl8168_mdio_write(tp, 0x14, 0xef57);
         rtl8168_mdio_write(tp, 0x14, 0xe687);
@@ -21573,7 +21683,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x49e5);
         rtl8168_mdio_write(tp, 0x14, 0xac50);
         rtl8168_mdio_write(tp, 0x14, 0x1abf);
-        rtl8168_mdio_write(tp, 0x14, 0x8748);
+        rtl8168_mdio_write(tp, 0x14, 0x876f);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdcef);
         rtl8168_mdio_write(tp, 0x14, 0x64e2);
@@ -21586,7 +21696,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xe587);
         rtl8168_mdio_write(tp, 0x14, 0xeaae);
         rtl8168_mdio_write(tp, 0x14, 0x06bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8745);
+        rtl8168_mdio_write(tp, 0x14, 0x876c);
         rtl8168_mdio_write(tp, 0x14, 0x024a);
         rtl8168_mdio_write(tp, 0x14, 0x5fe2);
         rtl8168_mdio_write(tp, 0x14, 0x87f7);
@@ -21600,15 +21710,15 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xf9fa);
         rtl8168_mdio_write(tp, 0x14, 0xef69);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x3f02);
+        rtl8168_mdio_write(tp, 0x14, 0x6602);
         rtl8168_mdio_write(tp, 0x14, 0x44dc);
         rtl8168_mdio_write(tp, 0x14, 0xad28);
         rtl8168_mdio_write(tp, 0x14, 0x29bf);
-        rtl8168_mdio_write(tp, 0x14, 0x873c);
+        rtl8168_mdio_write(tp, 0x14, 0x8763);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdcef);
         rtl8168_mdio_write(tp, 0x14, 0x54bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8739);
+        rtl8168_mdio_write(tp, 0x14, 0x8760);
         rtl8168_mdio_write(tp, 0x14, 0x0244);
         rtl8168_mdio_write(tp, 0x14, 0xdcac);
         rtl8168_mdio_write(tp, 0x14, 0x290d);
@@ -21622,7 +21732,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x0402);
         rtl8168_mdio_write(tp, 0x14, 0xae06);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x4502);
+        rtl8168_mdio_write(tp, 0x14, 0x6c02);
         rtl8168_mdio_write(tp, 0x14, 0x4a5f);
         rtl8168_mdio_write(tp, 0x14, 0xef96);
         rtl8168_mdio_write(tp, 0x14, 0xfefd);
@@ -21635,7 +21745,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xad25);
         rtl8168_mdio_write(tp, 0x14, 0x41d2);
         rtl8168_mdio_write(tp, 0x14, 0x0002);
-        rtl8168_mdio_write(tp, 0x14, 0x86ed);
+        rtl8168_mdio_write(tp, 0x14, 0x86f3);
         rtl8168_mdio_write(tp, 0x14, 0xe087);
         rtl8168_mdio_write(tp, 0x14, 0xebe1);
         rtl8168_mdio_write(tp, 0x14, 0x87ec);
@@ -21664,7 +21774,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0x08c9);
         rtl8168_mdio_write(tp, 0x14, 0xae06);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x4202);
+        rtl8168_mdio_write(tp, 0x14, 0x6902);
         rtl8168_mdio_write(tp, 0x14, 0x4a5f);
         rtl8168_mdio_write(tp, 0x14, 0xfeef);
         rtl8168_mdio_write(tp, 0x14, 0x96ff);
@@ -21674,72 +21784,88 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x14, 0xef79);
         rtl8168_mdio_write(tp, 0x14, 0xa200);
         rtl8168_mdio_write(tp, 0x14, 0x05bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8748);
+        rtl8168_mdio_write(tp, 0x14, 0x876f);
         rtl8168_mdio_write(tp, 0x14, 0xae33);
         rtl8168_mdio_write(tp, 0x14, 0xa201);
         rtl8168_mdio_write(tp, 0x14, 0x05bf);
-        rtl8168_mdio_write(tp, 0x14, 0x874b);
+        rtl8168_mdio_write(tp, 0x14, 0x8772);
         rtl8168_mdio_write(tp, 0x14, 0xae2b);
         rtl8168_mdio_write(tp, 0x14, 0xa202);
         rtl8168_mdio_write(tp, 0x14, 0x05bf);
-        rtl8168_mdio_write(tp, 0x14, 0x874e);
+        rtl8168_mdio_write(tp, 0x14, 0x8775);
         rtl8168_mdio_write(tp, 0x14, 0xae23);
         rtl8168_mdio_write(tp, 0x14, 0xa203);
         rtl8168_mdio_write(tp, 0x14, 0x05bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8751);
+        rtl8168_mdio_write(tp, 0x14, 0x8778);
         rtl8168_mdio_write(tp, 0x14, 0xae1b);
         rtl8168_mdio_write(tp, 0x14, 0xa204);
         rtl8168_mdio_write(tp, 0x14, 0x05bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8754);
+        rtl8168_mdio_write(tp, 0x14, 0x877b);
         rtl8168_mdio_write(tp, 0x14, 0xae13);
         rtl8168_mdio_write(tp, 0x14, 0xa205);
         rtl8168_mdio_write(tp, 0x14, 0x05bf);
-        rtl8168_mdio_write(tp, 0x14, 0x8757);
+        rtl8168_mdio_write(tp, 0x14, 0x877e);
         rtl8168_mdio_write(tp, 0x14, 0xae0b);
         rtl8168_mdio_write(tp, 0x14, 0xa206);
         rtl8168_mdio_write(tp, 0x14, 0x05bf);
-        rtl8168_mdio_write(tp, 0x14, 0x875a);
+        rtl8168_mdio_write(tp, 0x14, 0x8781);
         rtl8168_mdio_write(tp, 0x14, 0xae03);
         rtl8168_mdio_write(tp, 0x14, 0xbf87);
-        rtl8168_mdio_write(tp, 0x14, 0x5d02);
+        rtl8168_mdio_write(tp, 0x14, 0x8402);
         rtl8168_mdio_write(tp, 0x14, 0x44dc);
         rtl8168_mdio_write(tp, 0x14, 0xef64);
         rtl8168_mdio_write(tp, 0x14, 0xef97);
         rtl8168_mdio_write(tp, 0x14, 0xfffc);
         rtl8168_mdio_write(tp, 0x14, 0x04af);
         rtl8168_mdio_write(tp, 0x14, 0x00ed);
-        rtl8168_mdio_write(tp, 0x14, 0x54a4);
-        rtl8168_mdio_write(tp, 0x14, 0x3474);
-        rtl8168_mdio_write(tp, 0x14, 0xa600);
-        rtl8168_mdio_write(tp, 0x14, 0x22a4);
-        rtl8168_mdio_write(tp, 0x14, 0x3411);
+        rtl8168_mdio_write(tp, 0x14, 0x0220);
+        rtl8168_mdio_write(tp, 0x14, 0xa5f8);
+        rtl8168_mdio_write(tp, 0x14, 0xfaef);
+        rtl8168_mdio_write(tp, 0x14, 0x69bf);
+        rtl8168_mdio_write(tp, 0x14, 0x4554);
+        rtl8168_mdio_write(tp, 0x14, 0x0244);
+        rtl8168_mdio_write(tp, 0x14, 0xdce0);
+        rtl8168_mdio_write(tp, 0x14, 0x87ff);
+        rtl8168_mdio_write(tp, 0x14, 0x1f01);
+        rtl8168_mdio_write(tp, 0x14, 0x9e06);
+        rtl8168_mdio_write(tp, 0x14, 0xe587);
+        rtl8168_mdio_write(tp, 0x14, 0xff02);
+        rtl8168_mdio_write(tp, 0x14, 0x4b05);
+        rtl8168_mdio_write(tp, 0x14, 0xef96);
+        rtl8168_mdio_write(tp, 0x14, 0xfefc);
+        rtl8168_mdio_write(tp, 0x14, 0xaf03);
+        rtl8168_mdio_write(tp, 0x14, 0x8c54);
+        rtl8168_mdio_write(tp, 0x14, 0xa434);
+        rtl8168_mdio_write(tp, 0x14, 0x74a6);
+        rtl8168_mdio_write(tp, 0x14, 0x0022);
+        rtl8168_mdio_write(tp, 0x14, 0xa434);
+        rtl8168_mdio_write(tp, 0x14, 0x11b8);
+        rtl8168_mdio_write(tp, 0x14, 0x4222);
         rtl8168_mdio_write(tp, 0x14, 0xb842);
-        rtl8168_mdio_write(tp, 0x14, 0x22b8);
-        rtl8168_mdio_write(tp, 0x14, 0x42f0);
-        rtl8168_mdio_write(tp, 0x14, 0xa200);
         rtl8168_mdio_write(tp, 0x14, 0xf0a2);
-        rtl8168_mdio_write(tp, 0x14, 0x02f0);
-        rtl8168_mdio_write(tp, 0x14, 0xa204);
+        rtl8168_mdio_write(tp, 0x14, 0x00f0);
+        rtl8168_mdio_write(tp, 0x14, 0xa202);
         rtl8168_mdio_write(tp, 0x14, 0xf0a2);
-        rtl8168_mdio_write(tp, 0x14, 0x06f0);
-        rtl8168_mdio_write(tp, 0x14, 0xa208);
+        rtl8168_mdio_write(tp, 0x14, 0x04f0);
+        rtl8168_mdio_write(tp, 0x14, 0xa206);
         rtl8168_mdio_write(tp, 0x14, 0xf0a2);
-        rtl8168_mdio_write(tp, 0x14, 0x0af0);
-        rtl8168_mdio_write(tp, 0x14, 0xa20c);
+        rtl8168_mdio_write(tp, 0x14, 0x08f0);
+        rtl8168_mdio_write(tp, 0x14, 0xa20a);
         rtl8168_mdio_write(tp, 0x14, 0xf0a2);
-        rtl8168_mdio_write(tp, 0x14, 0x0e55);
-        rtl8168_mdio_write(tp, 0x14, 0xb820);
-        rtl8168_mdio_write(tp, 0x14, 0xd9c6);
-        rtl8168_mdio_write(tp, 0x14, 0x08aa);
-        rtl8168_mdio_write(tp, 0x14, 0xc430);
-        rtl8168_mdio_write(tp, 0x14, 0x00c6);
-        rtl8168_mdio_write(tp, 0x14, 0x1433);
-        rtl8168_mdio_write(tp, 0x14, 0xc41a);
-        rtl8168_mdio_write(tp, 0x14, 0x88c4);
-        rtl8168_mdio_write(tp, 0x14, 0x2e22);
+        rtl8168_mdio_write(tp, 0x14, 0x0cf0);
+        rtl8168_mdio_write(tp, 0x14, 0xa20e);
+        rtl8168_mdio_write(tp, 0x14, 0x55b8);
+        rtl8168_mdio_write(tp, 0x14, 0x20d9);
+        rtl8168_mdio_write(tp, 0x14, 0xc608);
+        rtl8168_mdio_write(tp, 0x14, 0xaac4);
+        rtl8168_mdio_write(tp, 0x14, 0x3000);
+        rtl8168_mdio_write(tp, 0x14, 0xc614);
+        rtl8168_mdio_write(tp, 0x14, 0x33c4);
+        rtl8168_mdio_write(tp, 0x14, 0x1a88);
         rtl8168_mdio_write(tp, 0x14, 0xc42e);
-        rtl8168_mdio_write(tp, 0x14, 0x54c4);
-        rtl8168_mdio_write(tp, 0x14, 0x1a00);
+        rtl8168_mdio_write(tp, 0x14, 0x22c4);
+        rtl8168_mdio_write(tp, 0x14, 0x2e54);
+        rtl8168_mdio_write(tp, 0x14, 0xc41a);
         rtl8168_mdio_write(tp, 0x13, 0xb818);
         rtl8168_mdio_write(tp, 0x14, 0x1a01);
         rtl8168_mdio_write(tp, 0x13, 0xb81a);
@@ -21749,7 +21875,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x13, 0xb81e);
         rtl8168_mdio_write(tp, 0x14, 0x00e7);
         rtl8168_mdio_write(tp, 0x13, 0xb846);
-        rtl8168_mdio_write(tp, 0x14, 0xffff);
+        rtl8168_mdio_write(tp, 0x14, 0x0389);
         rtl8168_mdio_write(tp, 0x13, 0xb848);
         rtl8168_mdio_write(tp, 0x14, 0xffff);
         rtl8168_mdio_write(tp, 0x13, 0xb84a);
@@ -21757,7 +21883,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x13, 0xb84c);
         rtl8168_mdio_write(tp, 0x14, 0xffff);
         rtl8168_mdio_write(tp, 0x13, 0xb832);
-        rtl8168_mdio_write(tp, 0x14, 0x000f);
+        rtl8168_mdio_write(tp, 0x14, 0x001f);
 
 
         rtl8168_mdio_write(tp, 0x1F, 0x0A43);
@@ -21770,6 +21896,7 @@ rtl8168_set_phy_mcu_8168h_3(struct net_device *dev)
         rtl8168_mdio_write(tp, 0x1f, 0x0A43);
         rtl8168_mdio_write(tp, 0x13, 0x8042);
         rtl8168_mdio_write(tp, 0x14, 0x0000);
+
 
         rtl8168_clear_phy_mcu_patch_request(tp);
 
@@ -24555,15 +24682,14 @@ static void
 rtl8168_netpoll(struct net_device *dev)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
-        struct pci_dev *pdev = tp->pci_dev;
 
-        disable_irq(pdev->irq);
+        disable_irq(tp->irq);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,19)
-        rtl8168_interrupt(pdev->irq, dev, NULL);
+        rtl8168_interrupt(tp->irq, dev, NULL);
 #else
-        rtl8168_interrupt(pdev->irq, dev);
+        rtl8168_interrupt(tp->irq, dev);
 #endif
-        enable_irq(pdev->irq);
+        enable_irq(tp->irq);
 }
 #endif
 
@@ -24941,7 +25067,8 @@ rtl8168_init_software_variable(struct net_device *dev)
         case CFG_METHOD_25:
         case CFG_METHOD_26:
         case CFG_METHOD_27:
-                if ((tp->features & RTL_FEATURE_MSI) && (tp->org_pci_offset_80 & BIT_1))
+                if ((tp->features & (RTL_FEATURE_MSI | RTL_FEATURE_MSIX)) &&
+                    (tp->org_pci_offset_80 & BIT_1))
                         tp->use_timer_interrrupt = FALSE;
                 else
                         tp->use_timer_interrrupt = TRUE;
@@ -25044,6 +25171,16 @@ rtl8168_init_software_variable(struct net_device *dev)
                     pdev->subsystem_device == 0xc0b1 ||
                     pdev->subsystem_device == 0xc0b8)
                         hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
+        }
+
+        switch (tp->mcfg) {
+        case CFG_METHOD_18:
+        case CFG_METHOD_19:
+                if (pdev->subsystem_vendor == 0x13fe) {
+                        if (pdev->subsystem_device == 0x00ec)
+                                hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
+                }
+                break;
         }
 
 #ifdef CONFIG_CTAP_SHORT_OFF
@@ -26296,6 +26433,11 @@ rtl8168_phy_power_down(struct net_device *dev)
         struct rtl8168_private *tp = netdev_priv(dev);
         u32 csi_tmp;
 
+#ifdef ENABLE_FIBER_SUPPORT
+        if (HW_FIBER_MODE_ENABLED(tp))
+                return;
+#endif //ENABLE_FIBER_SUPPORT
+
         switch (tp->mcfg) {
         case CFG_METHOD_21:
         case CFG_METHOD_22:
@@ -26372,6 +26514,7 @@ rtl8168_init_board(struct pci_dev *pdev,
         SET_NETDEV_DEV(dev, &pdev->dev);
         tp = netdev_priv(dev);
         tp->dev = dev;
+        tp->pci_dev = pdev;
         tp->msg_enable = netif_msg_init(debug.msg_enable, R8168_MSG_DEFAULT);
 
         if (!aspm || tp->mcfg == CFG_METHOD_9) {
@@ -26445,11 +26588,11 @@ rtl8168_init_board(struct pci_dev *pdev,
 
         if ((sizeof(dma_addr_t) > 4) &&
             use_dac &&
-            !pci_set_dma_mask(pdev, DMA_BIT_MASK(64)) &&
-            !pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64))) {
+            !dma_set_mask(&pdev->dev, DMA_BIT_MASK(64)) &&
+            !dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64))) {
                 dev->features |= NETIF_F_HIGHDMA;
         } else {
-                rc = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
+                rc = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
                 if (rc < 0) {
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
                         if (netif_msg_probe(tp))
@@ -26719,6 +26862,21 @@ rtl8168_link_timer(struct timer_list *t)
         mod_timer(timer, jiffies + RTL8168_LINK_TIMEOUT);
 }
 
+static int rtl8168_enable_msix(struct rtl8168_private *tp)
+{
+        int nvecs = 0;
+        struct msix_entry msix_ent[1] = {0};
+
+        nvecs = pci_enable_msix_range(tp->pci_dev, msix_ent,
+                                      1, 1);
+        if (nvecs < 0)
+                goto out;
+
+        tp->irq = msix_ent[0].vector;
+out:
+        return nvecs;
+}
+
 /* Cfg9346_Unlock assumed. */
 static unsigned rtl8168_try_msi(struct pci_dev *pdev, struct rtl8168_private *tp)
 {
@@ -26737,19 +26895,34 @@ static unsigned rtl8168_try_msi(struct pci_dev *pdev, struct rtl8168_private *tp
                 dev_info(&pdev->dev, "Default use INTx.\n");
                 break;
         default:
-                if (pci_enable_msi(pdev))
-                        dev_info(&pdev->dev, "no MSI. Back to INTx.\n");
-                else
+                if (rtl8168_enable_msix(tp) > 0)
+                        msi |= RTL_FEATURE_MSIX;
+                else if (!pci_enable_msi(pdev))
                         msi |= RTL_FEATURE_MSI;
+                else
+                        dev_info(&pdev->dev, "no MSI. Back to INTx.\n");
                 break;
         }
 #endif
 
+        if (msi & RTL_FEATURE_MSIX)
+                goto out;
+
+        tp->irq = pdev->irq;
+
+out:
         return msi;
 }
 
 static void rtl8168_disable_msi(struct pci_dev *pdev, struct rtl8168_private *tp)
 {
+        if (tp->features & RTL_FEATURE_MSIX) {
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,13)
+                pci_disable_msix(pdev);
+#endif
+                tp->features &= ~RTL_FEATURE_MSIX;
+        }
+
         if (tp->features & RTL_FEATURE_MSI) {
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,13)
                 pci_disable_msi(pdev);
@@ -26834,7 +27007,7 @@ rtl8168_init_one(struct pci_dev *pdev,
 #endif
 
         dev->watchdog_timeo = RTL8168_TX_TIMEOUT;
-        dev->irq = pdev->irq;
+        dev->irq = tp->irq;
         dev->base_addr = (unsigned long) ioaddr;
 
 #ifdef CONFIG_R8168_NAPI
@@ -26879,6 +27052,10 @@ rtl8168_init_one(struct pci_dev *pdev,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)
                 if ((tp->mcfg == CFG_METHOD_1) || (tp->mcfg == CFG_METHOD_2) || (tp->mcfg == CFG_METHOD_3)) {
                         dev->hw_features &= ~NETIF_F_IPV6_CSUM;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)
+                        netif_set_tso_max_size(dev, LSO_64K);
+                        netif_set_tso_max_segs(dev, NIC_MAX_PHYS_BUF_COUNT_LSO2);
+#else //LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)
                         netif_set_gso_max_size(dev, LSO_32K);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0)
                         dev->gso_max_segs = NIC_MAX_PHYS_BUF_COUNT_LSO_64K;
@@ -26886,6 +27063,7 @@ rtl8168_init_one(struct pci_dev *pdev,
                         dev->gso_min_segs = NIC_MIN_PHYS_BUF_COUNT;
 #endif //LINUX_VERSION_CODE < KERNEL_VERSION(4,7,0)
 #endif //LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0)
+#endif //LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)
                 } else {
                         dev->hw_features |= NETIF_F_IPV6_CSUM;
                         dev->features |=  NETIF_F_IPV6_CSUM;
@@ -26893,6 +27071,10 @@ rtl8168_init_one(struct pci_dev *pdev,
                                 dev->hw_features |= NETIF_F_TSO6;
                                 //dev->features |=  NETIF_F_TSO6;
                         }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)
+                        netif_set_tso_max_size(dev, LSO_64K);
+                        netif_set_tso_max_segs(dev, NIC_MAX_PHYS_BUF_COUNT_LSO2);
+#else //LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)
                         netif_set_gso_max_size(dev, LSO_64K);
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0)
                         dev->gso_max_segs = NIC_MAX_PHYS_BUF_COUNT_LSO2;
@@ -26900,12 +27082,11 @@ rtl8168_init_one(struct pci_dev *pdev,
                         dev->gso_min_segs = NIC_MIN_PHYS_BUF_COUNT;
 #endif //LINUX_VERSION_CODE < KERNEL_VERSION(4,7,0)
 #endif //LINUX_VERSION_CODE >= KERNEL_VERSION(3,18,0)
+#endif //LINUX_VERSION_CODE >= KERNEL_VERSION(5,19,0)
                 }
 #endif //LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22)
 #endif //LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0)
         }
-
-        tp->pci_dev = pdev;
 
         spin_lock_init(&tp->lock);
 
@@ -27076,14 +27257,16 @@ static int rtl8168_open(struct net_device *dev)
         * Rx and Tx descriptors needs 256 bytes alignment.
         * pci_alloc_consistent provides more.
         */
+        tp->TxDescAllocSize = (tp->num_tx_desc + 1) * sizeof(struct TxDesc);
         tp->TxDescArray = dma_alloc_coherent(&pdev->dev,
-                                             (tp->num_tx_desc * sizeof(struct TxDesc)),
+                                             tp->TxDescAllocSize,
                                              &tp->TxPhyAddr, GFP_KERNEL);
         if (!tp->TxDescArray)
                 goto err_free_all_allocated_mem;
 
+        tp->RxDescAllocSize = (tp->num_rx_desc + 1) * sizeof(struct RxDesc);
         tp->RxDescArray = dma_alloc_coherent(&pdev->dev,
-                                             (tp->num_rx_desc * sizeof(struct RxDesc)),
+                                             tp->RxDescAllocSize,
                                              &tp->RxPhyAddr, GFP_KERNEL);
         if (!tp->RxDescArray)
                 goto err_free_all_allocated_mem;
@@ -27092,7 +27275,9 @@ static int rtl8168_open(struct net_device *dev)
         if (retval < 0)
                 goto err_free_all_allocated_mem;
 
-        retval = request_irq(dev->irq, rtl8168_interrupt, (tp->features & RTL_FEATURE_MSI) ? 0 : SA_SHIRQ, dev->name, dev);
+        retval = request_irq(tp->irq, rtl8168_interrupt, (tp->features &
+                             (RTL_FEATURE_MSI | RTL_FEATURE_MSIX)) ? 0 :
+                             SA_SHIRQ, dev->name, dev);
         if (retval<0)
                 goto err_free_all_allocated_mem;
 
@@ -27104,7 +27289,7 @@ static int rtl8168_open(struct net_device *dev)
                        dev->base_addr,
                        dev->dev_addr[0], dev->dev_addr[1],
                        dev->dev_addr[2], dev->dev_addr[3],
-                       dev->dev_addr[4], dev->dev_addr[5], dev->irq);
+                       dev->dev_addr[4], dev->dev_addr[5], tp->irq);
         }
 
 #ifdef ENABLE_USE_FIRMWARE_FILE
@@ -27158,7 +27343,7 @@ out:
 err_free_all_allocated_mem:
         if (tp->RxDescArray != NULL) {
                 dma_free_coherent(&pdev->dev,
-                                  (tp->num_rx_desc * sizeof(struct RxDesc)),
+                                  tp->RxDescAllocSize,
                                   tp->RxDescArray,
                                   tp->RxPhyAddr);
                 tp->RxDescArray = NULL;
@@ -27166,7 +27351,7 @@ err_free_all_allocated_mem:
 
         if (tp->TxDescArray != NULL) {
                 dma_free_coherent(&pdev->dev,
-                                  (tp->num_tx_desc * sizeof(struct TxDesc)),
+                                  tp->TxDescAllocSize,
                                   tp->TxDescArray,
                                   tp->TxPhyAddr);
                 tp->TxDescArray = NULL;
@@ -28238,8 +28423,10 @@ rtl8168_hw_config(struct net_device *dev)
         case CFG_METHOD_33:
         case CFG_METHOD_34:
         case CFG_METHOD_35:
+                rtl8168_disable_pci_offset_99(tp);
                 if (aspm) {
-                        rtl8168_init_pci_offset_99(tp);
+                        if (tp->org_pci_offset_99 & (BIT_2 | BIT_5 | BIT_6))
+                                rtl8168_init_pci_offset_99(tp);
                 }
                 break;
         }
@@ -28256,8 +28443,10 @@ rtl8168_hw_config(struct net_device *dev)
         case CFG_METHOD_33:
         case CFG_METHOD_34:
         case CFG_METHOD_35:
+                rtl8168_disable_pci_offset_180(tp);
                 if (aspm) {
-                        rtl8168_init_pci_offset_180(tp);
+                        if (tp->org_pci_offset_180 & (BIT_0|BIT_1))
+                                rtl8168_init_pci_offset_180(tp);
                 }
                 break;
         }
@@ -28563,7 +28752,7 @@ rtl8168_tx_desc_init(struct rtl8168_private *tp)
 {
         int i = 0;
 
-        memset(tp->TxDescArray, 0x0, tp->num_tx_desc * sizeof(struct TxDesc));
+        memset(tp->TxDescArray, 0x0, tp->TxDescAllocSize);
 
         for (i = 0; i < tp->num_tx_desc; i++) {
                 if (i == (tp->num_tx_desc - 1))
@@ -28594,7 +28783,7 @@ rtl8168_rx_desc_offset0_init(struct rtl8168_private *tp, int own)
 static void
 rtl8168_rx_desc_init(struct rtl8168_private *tp)
 {
-        memset(tp->RxDescArray, 0x0, tp->num_rx_desc * sizeof(struct RxDesc));
+        memset(tp->RxDescArray, 0x0, tp->RxDescAllocSize);
 }
 
 static int
@@ -28947,11 +29136,10 @@ rtl8168_tx_csum(struct sk_buff *skb,
                         break;
                 case  __constant_htons(ETH_P_IPV6):
                         if (dev->features & NETIF_F_IPV6_CSUM) {
-                                u32 transport_offset = (u32)skb_transport_offset(skb);
-                                if (transport_offset > 0 && transport_offset <= TCPHO_MAX) {
+                                if (skb_transport_offset(skb) > 0 && skb_transport_offset(skb) <= TCPHO_MAX) {
                                         ip_protocol = ipv6_hdr(skb)->nexthdr;
                                         csum_cmd = tp->tx_ipv6_csum_cmd;
-                                        csum_cmd |= transport_offset << TCPHO_SHIFT;
+                                        csum_cmd |= skb_transport_offset(skb) << TCPHO_SHIFT;
                                 }
                         }
                         break;
@@ -29134,12 +29322,11 @@ rtl8168_start_xmit(struct sk_buff *skb,
                                 opts[0] |= LargeSend | (min(mss, MSS_MAX) << 16);
                                 large_send = 1;
                         } else {
-                                u32 transport_offset = (u32)skb_transport_offset(skb);
                                 switch (get_protocol(skb)) {
                                 case __constant_htons(ETH_P_IP):
-                                        if (transport_offset <= GTTCPHO_MAX) {
+                                        if (skb_transport_offset(skb) <= GTTCPHO_MAX) {
                                                 opts[0] |= GiantSendv4;
-                                                opts[0] |= transport_offset << GTTCPHO_SHIFT;
+                                                opts[0] |= skb_transport_offset(skb) << GTTCPHO_SHIFT;
                                                 opts[1] |= min(mss, MSS_MAX) << 18;
                                                 large_send = 1;
                                         }
@@ -29152,9 +29339,9 @@ rtl8168_start_xmit(struct sk_buff *skb,
                                                 goto out;
                                         }
 #endif
-                                        if (transport_offset <= GTTCPHO_MAX) {
+                                        if (skb_transport_offset(skb) <= GTTCPHO_MAX) {
                                                 opts[0] |= GiantSendv6;
-                                                opts[0] |= transport_offset << GTTCPHO_SHIFT;
+                                                opts[0] |= skb_transport_offset(skb) << GTTCPHO_SHIFT;
                                                 opts[1] |= min(mss, MSS_MAX) << 18;
                                                 large_send = 1;
                                         }
@@ -29412,10 +29599,12 @@ rtl8168_rx_interrupt(struct net_device *dev,
         rx_left = rtl8168_rx_quota(rx_left, (u32)rx_quota);
 
         for (; rx_left > 0; rx_left--) {
-                rmb();
                 status = le32_to_cpu(desc->opts1);
                 if (status & DescOwn)
                         break;
+
+                rmb();
+
                 if (unlikely(status & RxRES)) {
                         if (netif_msg_rx_err(tp)) {
                                 printk(KERN_INFO
@@ -29438,17 +29627,17 @@ rtl8168_rx_interrupt(struct net_device *dev,
                         int pkt_size;
 
 process_pkt:
+                        pkt_size = status & 0x00003fff;
                         if (likely(!(dev->features & NETIF_F_RXFCS)))
-                                pkt_size = (status & 0x00003fff) - 4;
-                        else
-                                pkt_size = status & 0x00003fff;
+                                pkt_size -= ETH_FCS_LEN;
 
                         /*
                          * The driver does not support incoming fragmented
                          * frames. They are seen as a symptom of over-mtu
                          * sized frames.
                          */
-                        if (unlikely(rtl8168_fragmented_frame(status))) {
+                        if (unlikely(rtl8168_fragmented_frame(status)) ||
+                            unlikely(pkt_size > tp->rx_buf_sz)) {
                                 RTLDEV->stats.rx_dropped++;
                                 RTLDEV->stats.rx_length_errors++;
                                 rtl8168_mark_to_asic(desc, tp->rx_buf_sz);
@@ -29540,7 +29729,7 @@ static irqreturn_t rtl8168_interrupt(int irq, void *dev_instance)
         do {
                 status = RTL_R16(tp, IntrStatus);
 
-                if (!(tp->features & RTL_FEATURE_MSI)) {
+                if (!(tp->features & (RTL_FEATURE_MSI | RTL_FEATURE_MSIX))) {
                         /* hotplug/major error/no more work/shared irq */
                         if ((status == 0xFFFF) || !status)
                                 break;
@@ -29785,7 +29974,7 @@ static void rtl8168_down(struct net_device *dev)
 
         spin_unlock_irqrestore(&tp->lock, flags);
 
-        synchronize_irq(dev->irq);
+        synchronize_irq(tp->irq);
 
         spin_lock_irqsave(&tp->lock, flags);
 
@@ -29819,14 +30008,14 @@ static int rtl8168_close(struct net_device *dev)
 
                 spin_unlock_irqrestore(&tp->lock, flags);
 
-                free_irq(dev->irq, dev);
+                free_irq(tp->irq, dev);
 
                 dma_free_coherent(&pdev->dev,
-                                  (tp->num_rx_desc * sizeof(struct RxDesc)),
+                                  tp->RxDescAllocSize,
                                   tp->RxDescArray,
                                   tp->RxPhyAddr);
                 dma_free_coherent(&pdev->dev,
-                                  (tp->num_tx_desc * sizeof(struct TxDesc)),
+                                  tp->TxDescAllocSize,
                                   tp->TxDescArray,
                                   tp->TxPhyAddr);
                 tp->TxDescArray = NULL;
