@@ -398,6 +398,7 @@ static const struct {
 static struct pci_device_id rtl8168_pci_tbl[] = {
         { PCI_DEVICE(PCI_VENDOR_ID_REALTEK, 0x8168), },
         { PCI_DEVICE(PCI_VENDOR_ID_REALTEK, 0x8161), },
+		{ PCI_DEVICE(PCI_VENDOR_ID_REALTEK, 0x8136), },
         { PCI_DEVICE(PCI_VENDOR_ID_REALTEK, 0x2502), },
         { PCI_DEVICE(PCI_VENDOR_ID_REALTEK, 0x2600), },
         { PCI_VENDOR_ID_DLINK, 0x4300, 0x1186, 0x4b10,},
