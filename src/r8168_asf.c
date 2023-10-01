@@ -5,7 +5,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2022 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2023 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -60,15 +60,12 @@ int rtl8168_asf_ioctl(struct net_device *dev,
         struct rtl8168_private *tp = netdev_priv(dev);
         void *user_data = ifr->ifr_data;
         struct asf_ioctl_struct asf_usrdata;
-        unsigned long flags;
 
         if (tp->mcfg != CFG_METHOD_7 && tp->mcfg != CFG_METHOD_8)
                 return -EOPNOTSUPP;
 
         if (copy_from_user(&asf_usrdata, user_data, sizeof(struct asf_ioctl_struct)))
                 return -EFAULT;
-
-        spin_lock_irqsave(&tp->lock, flags);
 
         switch (asf_usrdata.offset) {
         case HBPeriod:
@@ -192,11 +189,8 @@ int rtl8168_asf_ioctl(struct net_device *dev,
                 rtl8168_asf_key_access(tp, asf_usrdata.arg, KR, asf_usrdata.u.data);
                 break;
         default:
-                spin_unlock_irqrestore(&tp->lock, flags);
                 return -EOPNOTSUPP;
         }
-
-        spin_unlock_irqrestore(&tp->lock, flags);
 
         if (copy_to_user(user_data, &asf_usrdata, sizeof(struct asf_ioctl_struct)))
                 return -EFAULT;

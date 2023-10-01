@@ -5,7 +5,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2022 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2023 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -33,9 +33,21 @@
  ***********************************************************************************/
 
 #include <linux/ethtool.h>
+#include <linux/interrupt.h>
+#include <linux/version.h>
 #include "r8168_dash.h"
 #include "r8168_realwow.h"
 #include "r8168_fiber.h"
+#include "r8168_rss.h"
+#ifdef ENABLE_LIB_SUPPORT
+#include "r8168_lib.h"
+#endif
+
+/*
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,12,0)&& !defined(ENABLE_LIB_SUPPORT)
+#define RTL_USE_NEW_INTR_API
+#endif
+*/
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,32)
 typedef int netdev_tx_t;
@@ -130,11 +142,14 @@ do { \
 #endif
 #endif //LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
 
-#define RTL_ALLOC_SKB_INTR(tp, length) dev_alloc_skb(length)
+#define RTL_ALLOC_SKB_INTR(napi, length) dev_alloc_skb(length)
+#define R8168_USE_NAPI_ALLOC_SKB 0
 #ifdef CONFIG_R8168_NAPI
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,19,0)
 #undef RTL_ALLOC_SKB_INTR
-#define RTL_ALLOC_SKB_INTR(tp, length) napi_alloc_skb(&tp->napi, length)
+#define RTL_ALLOC_SKB_INTR(napi, length) napi_alloc_skb(napi, length)
+#undef R8168_USE_NAPI_ALLOC_SKB
+#define R8168_USE_NAPI_ALLOC_SKB 1
 #endif
 #endif
 
@@ -319,7 +334,7 @@ do { \
 #ifndef NET_IP_ALIGN
 #define NET_IP_ALIGN        2
 #endif
-#define RTK_RX_ALIGN        8
+#define RTK_RX_ALIGN        NET_IP_ALIGN
 
 #ifdef CONFIG_R8168_NAPI
 #define NAPI_SUFFIX "-NAPI"
@@ -343,13 +358,18 @@ do { \
 #else
 #define DASH_SUFFIX ""
 #endif
+#if defined(ENABLE_RSS_SUPPORT)
+#define RSS_SUFFIX "-RSS"
+#else
+#define RSS_SUFFIX ""
+#endif
 
-#define RTL8168_VERSION "8.051.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX
+#define RTL8168_VERSION "8.052.01" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX RSS_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2022 Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2023 Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -428,6 +448,8 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define R8168_PCI_REGS_SIZE  	(0x100)
 #define R8168_NAPI_WEIGHT   64
 
+#define R8168_MAX_MSIX_VEC   4
+
 #define RTL8168_TX_TIMEOUT  (6 * HZ)
 #define RTL8168_LINK_TIMEOUT    (1 * HZ)
 #define RTL8168_ESD_TIMEOUT (2 * HZ)
@@ -438,10 +460,17 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define MIN_NUM_TX_DESC 32    /* Minimum number of Tx descriptor registers */
 #define MIN_NUM_RX_DESC 32    /* Minimum number of Rx descriptor registers */
 
-#define NUM_TX_DESC 256    /* Number of Tx descriptor registers */
-#define NUM_RX_DESC 256    /* Number of Rx descriptor registers */
+#define NUM_TX_DESC 1024    /* Number of Tx descriptor registers */
+#define NUM_RX_DESC 1024    /* Number of Rx descriptor registers */
 
-#define RX_BUF_SIZE 0x05F3  /* 0x05F3 = 1522bye + 1 */
+#define RX_BUF_SIZE 0x05F2  /* 0x05F2 = 1522bye */
+#define R8168_MAX_TX_QUEUES (2)
+#define R8168_MAX_RX_QUEUES (4)
+#define R8168_MAX_QUEUES R8168_MAX_RX_QUEUES
+#define R8168_MULTI_TX_Q(tp) (rtl8168_tot_tx_rings(tp) > 1)
+#define R8168_MULTI_RX_Q(tp) (rtl8168_tot_rx_rings(tp) > 1)
+#define R8168_MULTI_RX_4Q(tp) (rtl8168_tot_rx_rings(tp) > 3)
+#define R8168_MULTI_RSS_4Q(tp) (tp->num_hw_tot_en_rx_rings > 3)
 
 #define OCP_STD_PHY_BASE	0xa400
 
@@ -566,7 +595,11 @@ typedef int *napi_budget;
 typedef struct napi_struct *napi_ptr;
 typedef int napi_budget;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,1,0)
+#define RTL_NAPI_CONFIG(ndev, priv, function, weight)   netif_napi_add_weight(ndev, &priv->napi, function, weight)
+#else
 #define RTL_NAPI_CONFIG(ndev, priv, function, weight)   netif_napi_add(ndev, &priv->napi, function, weight)
+#endif //LINUX_VERSION_CODE >= KERNEL_VERSION(6,1,0)
 #define RTL_NAPI_QUOTA(budget, ndev)            min(budget, budget)
 #define RTL_GET_PRIV(stuct_ptr, priv_struct)        container_of(stuct_ptr, priv_struct, stuct_ptr)
 #define RTL_GET_NETDEV(priv_ptr)            struct net_device *dev = priv_ptr->dev;
@@ -1095,13 +1128,20 @@ enum RTL8168_registers {
         ERIAR           = 0x74,
         EPHY_RXER_NUM   = 0x7C,
         EPHYAR          = 0x80,
+        IntrMask1       = 0x84,
+        IntrMask2       = 0x85,
+        IntrStatus1     = 0x86,
+        IntrStatus2     = 0x87,
         TimeInt2        = 0x8C,
+        Rss_indir_tbl   = 0x90,
         OCPDR           = 0xB0,
         MACOCP          = 0xB0,
         OCPAR           = 0xB4,
         SecMAC0         = 0xB4,
         SecMAC4         = 0xB8,
         PHYOCP          = 0xB8,
+        IntrMask3       = 0xC0,
+        IntrStatus3     = 0xC1,
         DBG_reg         = 0xD1,
         TwiCmdReg       = 0xD2,
         MCUCmd_reg      = 0xD3,
@@ -1122,6 +1162,14 @@ enum RTL8168_registers {
         CMAC_IBIMR0     = 0xFA,
         CMAC_IBISR0     = 0xFB,
         FuncForceEvent  = 0xFC,
+
+        /* ERI */
+        RSS_KEY_8168    = 0x90,
+        RSS_CTRL_8168   = 0xB8,
+        Q_NUM_CTRL_8168 = 0xC0,
+
+        /* MAC OCP */
+        EEE_TXIDLE_TIMER_8168   = 0xe048,
 };
 
 enum RTL8168_register_content {
@@ -1137,6 +1185,8 @@ enum RTL8168_register_content {
         TxOK        = 0x0004,
         RxErr       = 0x0002,
         RxOK        = 0x0001,
+        RxDU1       = 0x0002,
+        RxOK1       = 0x0001,
 
         /* RxStatusDesc */
         RxRWT = (1 << 22),
@@ -1181,6 +1231,7 @@ enum RTL8168_register_content {
         RxCfg_fet_multi_en = (1 << 14),
         RxCfg_half_refetch = (1 << 13),
         RxCfg_9356SEL = (1 << 6),
+        RxCfg_rx_desc_v2_en = (1 << 24),
 
         /* TxConfigBits */
         TxInterFrameGapShift = 24,
@@ -1435,6 +1486,17 @@ enum bits {
         BIT_31 = (1 << 31)
 };
 
+#define RTL8168_CP_NUM 4
+#define RTL8168_MAX_SUPPORT_cp_len 110
+
+enum rtl8168_cp_status {
+        rtl8168_cp_normal = 0,
+        rtl8168_cp_short,
+        rtl8168_cp_open,
+        rtl8168_cp_mismatch,
+        rtl8168_cp_unknown
+};
+
 enum effuse {
         EFUSE_NOT_SUPPORT = 0,
         EFUSE_SUPPORT_V1,
@@ -1453,6 +1515,29 @@ struct RxDesc {
         u32 opts1;
         u32 opts2;
         u64 addr;
+};
+
+struct RxDescV2 {
+        u32 opts1;
+        u32 opts2;
+        u64 addr;
+        u32 rsvd1;
+        u32 RSSResult;
+        u64 rsvd2;
+};
+
+//Rx Desc Type
+enum rx_desc_ring_type {
+        RX_DESC_RING_TYPE_UNKNOWN=0,
+        RX_DESC_RING_TYPE_1,
+        RX_DESC_RING_TYPE_2,
+        RX_DESC_RING_TYPE_3,
+        RX_DESC_RING_TYPE_MAX
+};
+
+enum rx_desc_len {
+        RX_DESC_LEN_TYPE_1 = (sizeof(struct RxDesc)),
+        RX_DESC_LEN_TYPE_2 = (sizeof(struct RxDescV2))
 };
 
 struct ring_info {
@@ -1481,6 +1566,14 @@ struct pci_resource {
         u32 pci_sn_h;
 };
 
+enum r8168_flag {
+        R8168_FLAG_DOWN = 0,
+        R8168_FLAG_TASK_RESET_PENDING,
+        R8168_FLAG_TASK_ESD_CHECK_PENDING,
+        R8168_FLAG_TASK_LINKCHG_CHECK_PENDING,
+        R8168_FLAG_MAX
+};
+
 /* Flow Control Settings */
 enum rtl8168_fc_mode {
         rtl8168_fc_none = 0,
@@ -1490,17 +1583,222 @@ enum rtl8168_fc_mode {
         rtl8168_fc_default
 };
 
-struct rtl8168_private {
-        void __iomem *mmio_addr;    /* memory map physical address */
-        struct pci_dev *pci_dev;    /* Index of PCI device */
-        struct net_device *dev;
+struct rtl8168_tx_ring {
+        void* priv;
+        u32 index;
+        u32 cur_tx; /* Index into the Tx descriptor buffer of next Rx pkt. */
+        u32 dirty_tx;
+        u32 num_tx_desc; /* Number of Tx descriptor registers */
+        u32 tdu; /* Tx descriptor unavailable count */
+        struct TxDesc *TxDescArray; /* 256-aligned Tx descriptor ring */
+        dma_addr_t TxPhyAddr;
+        u32 TxDescAllocSize;
+        struct ring_info tx_skb[NUM_TX_DESC]; /* Tx data buffers */
+
+        u16 tdsar_reg; /* Transmit Descriptor Start Address */
+};
+
+struct rtl8168_rx_ring {
+        void* priv;
+        u32 index;
+        u32 cur_rx; /* Index into the Rx descriptor buffer of next Rx pkt. */
+        u32 dirty_rx;
+        u32 rdu; /* Rx descriptor unavailable count */
+        //struct RxDesc *RxDescArray; /* 256-aligned Rx descriptor ring */
+        //u32 RxDescAllocSize;
+        u64 RxDescPhyAddr[MAX_NUM_RX_DESC]; /* Rx desc physical address*/
+        //dma_addr_t RxPhyAddr;
+        struct sk_buff *Rx_skbuff[MAX_NUM_RX_DESC]; /* Rx data buffers */
+
+        //u16 rdsar_reg; /* Receive Descriptor Start Address */
+};
+
+struct r8168_napi {
 #ifdef CONFIG_R8168_NAPI
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,24)
         struct napi_struct napi;
 #endif
 #endif
+        void* priv;
+        int index;
+};
+
+struct r8168_irq {
+        irq_handler_t	handler;
+        unsigned int	vector;
+        u8		requested;
+        char		name[IFNAMSIZ + 10];
+};
+
+#pragma pack(1)
+struct rtl8168_regs {
+        //00
+        u8 mac_id[6];
+        u16 reg_06;
+        u8 mar[8];
+        //10
+        u64 dtccr;
+        u16 ledsel0;
+        u16 legreg;
+        u32 tctr3;
+        //20
+        u32 txq0_dsc_st_addr_0;
+        u32 txq0_dsc_st_addr_2;
+        u64 reg_28;
+        //30
+        u16 rit;
+        u16 ritc;
+        u16 reg_34;
+        u8 reg_36;
+        u8 command;
+        u32 imr0;
+        u32 isr0;
+        //40
+        u32 tcr;
+        u32 rcr;
+        u32 tctr0;
+        u32 tctr1;
+        //50
+        u8 cr93c46;
+        u8 config0;
+        u8 config1;
+        u8 config2;
+        u8 config3;
+        u8 config4;
+        u8 config5;
+        u8 tdfnr;
+        u32 timer_int0;
+        u32 timer_int1;
+        //60
+        u32 gphy_mdcmdio;
+        u32 csidr;
+        u32 csiar;
+        u16 phy_status;
+        u8 config6;
+        u8 pmch;
+        //70
+        u32 eridr;
+        u32 eriar;
+        u16 config7;
+        u16 reg_7a;
+        u32 ephy_rxerr_cnt;
+        //80
+        u32 ephy_mdcmdio;
+        u16 ledsel2;
+        u16 ledsel1;
+        u32 tctr2;
+        u32 timer_int2;
+        //90
+        u8 tppoll0;
+        u8 reg_91;
+        u16 reg_92;
+        u16 led_feature;
+        u16 ledsel3;
+        u16 eee_led_config;
+        u16 reg_9a;
+        u32 reg_9c;
+        //a0
+        u32 reg_a0;
+        u32 reg_a4;
+        u32 reg_a8;
+        u32 reg_ac;
+        //b0
+        u32 patch_dbg;
+        u32 reg_b4;
+        u32 gphy_ocp;
+        u32 reg_bc;
+        //c0
+        u32 reg_c0;
+        u32 reg_c4;
+        u32 reg_c8;
+        u16 otp_cmd;
+        u16 otp_pg_config;
+        //d0
+        u16 phy_pwr;
+        u8 twsi_ctrl;
+        u8 oob_ctrl;
+        u16 mac_dbgo;
+        u16 mac_dbg;
+        u16 reg_d8;
+        u16 rms;
+        u32 efuse_data;
+        //e0
+        u16 cplus_cmd;
+        u16 reg_e2;
+        u32 rxq0_dsc_st_addr_0;
+        u32 rxq0_dsc_st_addr_2;
+        u16 reg_ec;
+        u16 tx10midle_cnt;
+        //f0
+        u16 misc0;
+        u16 misc1;
+        u32 timer_int3;
+        u32 cmac_ib;
+        u16 reg_fc;
+        u16 sw_rst;
+};
+#pragma pack()
+
+struct rtl8168_regs_save {
+        union {
+                u8 mac_io[R8168_MAC_REGS_SIZE];
+
+                struct rtl8168_regs mac_reg;
+        };
+        u16 pcie_phy[R8168_EPHY_REGS_SIZE/2];
+        u16 eth_phy[R8168_PHY_REGS_SIZE/2];
+        u32 eri_reg[R8168_ERI_REGS_SIZE/4];
+        u32 pci_reg[R8168_PCI_REGS_SIZE/4];
+
+        //ktime_t begin_ktime;
+        //ktime_t end_ktime;
+        //u64 duration_ns;
+
+
+        u16 int_miti_rxq0;
+
+        u8 int_config;
+        u32 imr_new;
+        u32 isr_new;
+
+        u8 tdu_status;
+        u16 rdu_status;
+
+        u32 rss_ctrl;
+        u8 rss_key[RTL8168_RSS_KEY_SIZE];
+        u8 rss_i_table[RTL8168_MAX_INDIRECTION_TABLE_ENTRIES];
+        u16 rss_queue_num_sel_r;
+};
+
+struct rtl8168_counters {
+        /* legacy */
+        u64 tx_packets;
+        u64 rx_packets;
+        u64 tx_errors;
+        u32 rx_errors;
+        u16 rx_missed;
+        u16 align_errors;
+        u32 tx_one_collision;
+        u32 tx_multi_collision;
+        u64 rx_unicast;
+        u64 rx_broadcast;
+        u32 rx_multicast;
+        u16 tx_aborted;
+        u16 tx_underrun;
+};
+
+struct rtl8168_private {
+        void __iomem *mmio_addr;    /* memory map physical address */
+        struct pci_dev *pci_dev;    /* Index of PCI device */
+        struct pci_dev *pdev_cmac;  /* Index of PCI device */
+        struct net_device *dev;
+        struct r8168_napi r8168napi[R8168_MAX_MSIX_VEC];
+        struct r8168_irq irq_tbl[R8168_MAX_MSIX_VEC];
+        unsigned int irq_nvecs;
+        unsigned int max_irq_nvecs;
+        unsigned int min_irq_nvecs;
+        unsigned int hw_supp_irq_nvecs;
         struct net_device_stats stats;  /* statistics of net device */
-        spinlock_t lock;        /* spin lock flag */
         u32 msg_enable;
         u32 tx_tcp_csum_cmd;
         u32 tx_udp_csum_cmd;
@@ -1509,23 +1807,35 @@ struct rtl8168_private {
         int max_jumbo_frame_size;
         int chipset;
         u32 mcfg;
-        u32 cur_rx; /* Index into the Rx descriptor buffer of next Rx pkt. */
-        u32 cur_tx; /* Index into the Tx descriptor buffer of next Rx pkt. */
-        u32 dirty_rx;
-        u32 dirty_tx;
+        //u32 cur_rx; /* Index into the Rx descriptor buffer of next Rx pkt. */
+        // u32 cur_tx; /* Index into the Tx descriptor buffer of next Rx pkt. */
+        //u32 dirty_rx;
+        //u32 dirty_tx;
         u32 num_rx_desc; /* Number of Rx descriptor registers */
-        u32 num_tx_desc; /* Number of Tx descriptor registers */
-        struct TxDesc *TxDescArray; /* 256-aligned Tx descriptor ring */
+        //u32 num_tx_desc; /* Number of Tx descriptor registers */
+        //struct TxDesc *TxDescArray; /* 256-aligned Tx descriptor ring */
         struct RxDesc *RxDescArray; /* 256-aligned Rx descriptor ring */
-        dma_addr_t TxPhyAddr;
+        //dma_addr_t TxPhyAddr;
         dma_addr_t RxPhyAddr;
-        u32 TxDescAllocSize;
+        //u32 TxDescAllocSize;
         u32 RxDescAllocSize;
-        struct sk_buff *Rx_skbuff[MAX_NUM_RX_DESC]; /* Rx data buffers */
-        struct ring_info tx_skb[MAX_NUM_TX_DESC];   /* Tx data buffers */
+        //struct sk_buff *Rx_skbuff[MAX_NUM_RX_DESC]; /* Rx data buffers */
+        //struct ring_info tx_skb[MAX_NUM_TX_DESC];   /* Tx data buffers */
         unsigned rx_buf_sz;
-        struct timer_list esd_timer;
-        struct timer_list link_timer;
+        u16 HwSuppNumTxQueues; // Number of tx ring that hardware can support
+        u16 HwSuppNumRxQueues; // Number of rx ring that hardware can support
+        unsigned int num_tx_rings; // Number of tx ring that non-ring-lib driver used
+        unsigned int num_rx_rings; // Number of rx ring that non-ring-lib driver used
+        struct rtl8168_tx_ring tx_ring[R8168_MAX_TX_QUEUES]; // non-ring-lib tx ring
+        struct rtl8168_rx_ring rx_ring[R8168_MAX_RX_QUEUES]; // non-ring-lib rx ring
+#ifdef ENABLE_LIB_SUPPORT
+        struct blocking_notifier_head lib_nh;
+        struct rtl8168_ring lib_tx_ring[R8168_MAX_TX_QUEUES]; // ring-lib tx ring
+        struct rtl8168_ring lib_rx_ring[R8168_MAX_RX_QUEUES]; // ring-lib rx ring
+#endif
+        u16 num_hw_tot_en_rx_rings; // Number of rx ring that hardware enabled
+        //struct timer_list esd_timer;
+        //struct timer_list link_timer;
         struct pci_resource pci_cfg_space;
         unsigned int esd_flag;
         unsigned int pci_cfg_is_read;
@@ -1533,7 +1843,8 @@ struct rtl8168_private {
         u16 cp_cmd;
         u16 intr_mask;
         u16 timer_intr_mask;
-        int irq;
+        u16 isr_reg[R8168_MAX_MSIX_VEC];
+        u16 imr_reg[R8168_MAX_MSIX_VEC];
         int phy_auto_nego_reg;
         int phy_1000_ctrl_reg;
         u8 org_mac_addr[NODE_ADDRESS_SIZE];
@@ -1566,10 +1877,15 @@ struct rtl8168_private {
         unsigned int (*phy_reset_pending)(struct net_device *);
         unsigned int (*link_ok)(struct net_device *);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20)
-        struct work_struct task;
+        struct work_struct reset_task;
+        struct work_struct esd_task;
+        struct work_struct linkchg_task;
 #else
-        struct delayed_work task;
+        struct delayed_work reset_task;
+        struct delayed_work esd_task;
+        struct delayed_work linkchg_task;
 #endif
+        DECLARE_BITMAP(task_flags, R8168_FLAG_MAX);
         unsigned features;
 
         u8 org_pci_offset_99;
@@ -1640,6 +1956,8 @@ struct rtl8168_private {
         u16 BackupPhyFuseDout_47_32;
         u16 BackupPhyFuseDout_63_48;
 
+        u8 ring_lib_enabled;
+
         const char *fw_name;
         struct rtl8168_fw *rtl_fw;
         u32 ocp_base;
@@ -1649,7 +1967,6 @@ struct rtl8168_private {
         u8 DASH;
         u8 dash_printer_enabled;
         u8 HwPkgDet;
-        void __iomem *mapped_cmac_ioaddr; /* mapped cmac memory map physical address */
         void __iomem *cmac_ioaddr; /* cmac memory map physical address */
 
 #ifdef ENABLE_DASH_SUPPORT
@@ -1725,8 +2042,7 @@ struct rtl8168_private {
         //Realwow--------------
 #endif //ENABLE_REALWOW_SUPPORT
 
-        u32 eee_adv_t;
-        u8 eee_enabled;
+        struct ethtool_eee eee;
 
         u32 dynamic_aspm_packet_count;
 
@@ -1734,7 +2050,131 @@ struct rtl8168_private {
         //Procfs support
         struct proc_dir_entry *proc_dir;
 #endif
+        u8 HwSuppRxDescType;
+        u8 InitRxDescType;
+        u16 RxDescLength; //V1 16 Byte V2 32 Bytes
+
+        u8 HwSuppRssVer;
+        u8 EnableRss;
+        u16 HwSuppIndirTblEntries;
+#ifdef ENABLE_RSS_SUPPORT
+        u32 rss_flags;
+        /* Receive Side Scaling settings */
+#define RTL8168_RSS_KEY_SIZE     40  /* size of RSS Hash Key in bytes */
+        u8 rss_key[RTL8168_RSS_KEY_SIZE];
+#define RTL8168_MAX_INDIRECTION_TABLE_ENTRIES 128
+        u8 rss_indir_tbl[RTL8168_MAX_INDIRECTION_TABLE_ENTRIES];
+        u32 rss_options;
+#endif
+        u32 rx_fifo_of; /* Rx fifo overflow count */
 };
+
+#ifdef ENABLE_LIB_SUPPORT
+static inline unsigned int
+rtl8168_num_lib_tx_rings(struct rtl8168_private *tp)
+{
+        int count, i;
+
+        for (count = 0, i = tp->num_tx_rings; i < tp->HwSuppNumTxQueues; i++)
+                if(tp->lib_tx_ring[i].enabled)
+                        count++;
+
+        return count;
+}
+
+static inline unsigned int
+rtl8168_num_lib_rx_rings(struct rtl8168_private *tp)
+{
+        int count, i;
+
+        for (count = 0, i = tp->num_rx_rings; i < tp->HwSuppNumRxQueues; i++)
+                if(tp->lib_rx_ring[i].enabled)
+                        count++;
+
+        return count;
+}
+
+static inline bool
+rtl8168_lib_tx_ring_released(struct rtl8168_private *tp)
+{
+        int i;
+        bool released = 0;
+
+        for (i = tp->num_tx_rings; i < tp->HwSuppNumTxQueues; i++) {
+                struct rtl8168_ring *ring = &tp->lib_tx_ring[i];
+                if (ring->allocated)
+                        goto exit;
+        }
+
+        released = 1;
+
+exit:
+        return released;
+}
+
+static inline bool
+rtl8168_lib_rx_ring_released(struct rtl8168_private *tp)
+{
+        int i;
+        bool released = 0;
+
+        for (i = tp->num_rx_rings; i < tp->HwSuppNumRxQueues; i++) {
+                struct rtl8168_ring *ring = &tp->lib_rx_ring[i];
+                if (ring->allocated)
+                        goto exit;
+        }
+
+        released = 1;
+
+exit:
+        return released;
+}
+
+#else
+
+static inline unsigned int
+rtl8168_num_lib_tx_rings(struct rtl8168_private *tp)
+{
+        return 0;
+}
+
+static inline unsigned int
+rtl8168_num_lib_rx_rings(struct rtl8168_private *tp)
+{
+        return 0;
+}
+
+static inline bool
+rtl8168_lib_tx_ring_released(struct rtl8168_private *tp)
+{
+        return 1;
+}
+
+static inline bool
+rtl8168_lib_rx_ring_released(struct rtl8168_private *tp)
+{
+        return 1;
+}
+#endif
+
+static inline unsigned int
+rtl8168_tot_tx_rings(struct rtl8168_private *tp)
+{
+        return tp->num_tx_rings + rtl8168_num_lib_tx_rings(tp);
+}
+
+static inline unsigned int
+rtl8168_tot_rx_rings(struct rtl8168_private *tp)
+{
+        return tp->num_rx_rings + rtl8168_num_lib_rx_rings(tp);
+}
+
+static inline bool
+rtl8168_lib_all_ring_released(struct rtl8168_private *tp)
+{
+        return (rtl8168_lib_tx_ring_released(tp) &&
+                rtl8168_lib_rx_ring_released(tp));
+}
 
 enum eetype {
         EEPROM_TYPE_NONE=0,
@@ -1779,6 +2219,8 @@ enum mcfg {
         CFG_METHOD_33,
         CFG_METHOD_34,
         CFG_METHOD_35,
+        CFG_METHOD_36,
+        CFG_METHOD_37,
         CFG_METHOD_MAX,
         CFG_METHOD_DEFAULT = 0xFF
 };
@@ -1817,13 +2259,16 @@ enum mcfg {
 #define NIC_RAMCODE_VERSION_CFG_METHOD_23 (0x0015)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_26 (0x0012)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_28 (0x0019)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0055)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_29 (0x0083)
 #define NIC_RAMCODE_VERSION_CFG_METHOD_31 (0x0003)
-#define NIC_RAMCODE_VERSION_CFG_METHOD_35 (0x0019)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_35 (0x0027)
+#define NIC_RAMCODE_VERSION_CFG_METHOD_36 (0x0000)
 
 //hwoptimize
 #define HW_PATCH_SOC_LAN (BIT_0)
 #define HW_PATCH_SAMSUNG_LAN_DONGLE (BIT_2)
+
+static const u8 other_q_intr_mask = (RxOK1 | RxDU1);
 
 #define HW_PHY_STATUS_INI       1
 #define HW_PHY_STATUS_EXT_INI   2
@@ -1862,11 +2307,84 @@ void rtl8168_dash2_enable_tx(struct rtl8168_private *tp);
 void rtl8168_dash2_disable_rx(struct rtl8168_private *tp);
 void rtl8168_dash2_enable_rx(struct rtl8168_private *tp);
 void rtl8168_hw_disable_mac_mcu_bps(struct net_device *dev);
+void rtl8168_mark_to_asic(struct RxDesc *desc, u32 rx_buf_sz);
+
+static inline struct RxDesc*
+rtl8168_get_rxdesc(struct rtl8168_private *tp, struct RxDesc *RxDescBase, u32 const cur_rx, u32 const q_num)
+{
+        u8 *desc = (u8*)RxDescBase;
+        u32 offset;
+
+        WARN_ON_ONCE(q_num >= tp->num_hw_tot_en_rx_rings);
+
+        if (tp->InitRxDescType == RX_DESC_RING_TYPE_2)
+                offset = (cur_rx * tp->num_hw_tot_en_rx_rings) + q_num;
+        else
+                offset = cur_rx;
+
+        offset *= tp->RxDescLength;
+        desc += offset;
+
+        return (struct RxDesc*)desc;
+}
+
+static inline void
+rtl8168_disable_interrupt_by_vector(struct rtl8168_private *tp,
+                                    u32 message_id)
+{
+        if (message_id >= R8168_MAX_MSIX_VEC)
+                return;
+
+        if (message_id == 0) {
+                RTL_W16(tp, tp->imr_reg[0], 0x0000);
+#ifdef ENABLE_DASH_SUPPORT
+                if (tp->DASH)
+                        rtl8168_disable_dash2_interrupt(tp);
+#endif
+        } else
+                RTL_W8(tp, tp->imr_reg[message_id], 0x00);
+}
+
+static inline void
+rtl8168_enable_interrupt_by_vector(struct rtl8168_private *tp,
+                                   u32 message_id)
+{
+        if (message_id >= R8168_MAX_MSIX_VEC)
+                return;
+
+        if (message_id == 0) {
+                RTL_W16(tp, tp->imr_reg[0], tp->intr_mask);
+#ifdef ENABLE_DASH_SUPPORT
+                if (tp->DASH)
+                        rtl8168_enable_dash2_interrupt(tp);
+#endif
+        } else {
+                RTL_W8(tp, tp->imr_reg[message_id], other_q_intr_mask);
+        }
+}
+
+int rtl8168_open(struct net_device *dev);
+int rtl8168_close(struct net_device *dev);
+void rtl8168_hw_config(struct net_device *dev);
+void rtl8168_hw_start(struct net_device *dev);
+void rtl8168_hw_reset(struct net_device *dev);
+void rtl8168_tx_clear(struct rtl8168_private *tp);
+void rtl8168_rx_clear(struct rtl8168_private *tp);
+int rtl8168_init_ring(struct net_device *dev);
+int rtl8168_dump_tally_counter(struct rtl8168_private *tp, dma_addr_t paddr);
+void rtl8168_enable_napi(struct rtl8168_private *tp);
+void _rtl8168_wait_for_quiescence(struct net_device *dev);
+
+#ifndef ENABLE_LIB_SUPPORT
+static inline void rtl8168_lib_reset_prepare(struct rtl8168_private *tp) { }
+static inline void rtl8168_lib_reset_complete(struct rtl8168_private *tp) { }
+#endif
 
 #define HW_SUPPORT_CHECK_PHY_DISABLE_MODE(_M)        ((_M)->HwSuppCheckPhyDisableModeVer > 0 )
 #define HW_SUPP_SERDES_PHY(_M)        ((_M)->HwSuppSerDesPhyVer > 0)
 #define HW_HAS_WRITE_PHY_MCU_RAM_CODE(_M)        (((_M)->HwHasWrRamCodeToMicroP == TRUE) ? 1 : 0)
 #define HW_SUPPORT_UPS_MODE(_M)        ((_M)->HwSuppUpsVer > 0)
+#define HW_RSS_SUPPORT_RSS(_M)        ((_M)->HwSuppRssVer > 0)
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34)
 #define netdev_mc_count(dev) ((dev)->mc_count)
