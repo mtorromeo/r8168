@@ -6293,7 +6293,7 @@ rtl8168_get_drvinfo(struct net_device *dev,
         info->eedump_len = tp->eeprom_len;
         BUILD_BUG_ON(sizeof(info->fw_version) < sizeof(rtl_fw->version));
         if (rtl_fw)
-                strlcpy(info->fw_version, rtl_fw->version,
+                strscpy(info->fw_version, rtl_fw->version,
                         sizeof(info->fw_version));
 }
 
