@@ -5,7 +5,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2023 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -247,6 +247,7 @@ RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 #define RTL_CMAC_R32(tp, reg)        ((unsigned long) readl (tp->cmac_ioaddr + (reg)))
 
 int rtl8168_dash_ioctl(struct net_device *dev, struct ifreq *ifr);
+bool CheckDashInterrupt(struct net_device *dev, u16 status);
 void HandleDashInterrupt(struct net_device *dev);
 int AllocateDashShareMemory(struct net_device *dev);
 void FreeAllocatedDashShareMemory(struct net_device *dev);

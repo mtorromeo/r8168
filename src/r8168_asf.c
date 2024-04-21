@@ -5,7 +5,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2023 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -384,10 +384,10 @@ void rtl8168_asf_rw_systemid(struct rtl8168_private *tp, int arg, unsigned int *
         int i;
 
         if (arg == ASF_GET)
-                for (i = 0; i < SYSID_LEN ; i++)
+                for (i = 0; i < SYSID_LEN; i++)
                         data[i] = rtl8168_eri_read(tp, SysID + i, RW_ONE_BYTE, ERIAR_ASF);
         else /* arg == ASF_SET */
-                for (i = 0; i < SYSID_LEN ; i++)
+                for (i = 0; i < SYSID_LEN; i++)
                         rtl8168_eri_write(tp, SysID + i, RW_ONE_BYTE, data[i], ERIAR_ASF);
 }
 
@@ -408,9 +408,9 @@ void rtl8168_asf_rw_uuid(struct rtl8168_private *tp, int arg, unsigned int *data
         int i, j;
 
         if (arg == ASF_GET)
-                for (i = UUID_LEN - 1, j = 0; i >= 0 ; i--, j++)
+                for (i = UUID_LEN - 1, j = 0; i >= 0; i--, j++)
                         data[j] = rtl8168_eri_read(tp, UUID + i, RW_ONE_BYTE, ERIAR_ASF);
         else /* arg == ASF_SET */
-                for (i = UUID_LEN - 1, j = 0; i >= 0 ; i--, j++)
+                for (i = UUID_LEN - 1, j = 0; i >= 0; i--, j++)
                         rtl8168_eri_write(tp, UUID + i, RW_ONE_BYTE, data[j], ERIAR_ASF);
 }

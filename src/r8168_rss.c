@@ -5,7 +5,7 @@
 # r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2023 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -57,13 +57,13 @@ static int rtl8168_get_rss_hash_opts(struct rtl8168_private *tp,
         switch (cmd->flow_type) {
         case TCP_V4_FLOW:
                 cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
-        /* fallthrough */
+                fallthrough;
         case IPV4_FLOW:
                 cmd->data |= RXH_IP_SRC | RXH_IP_DST;
                 break;
         case TCP_V6_FLOW:
                 cmd->data |= RXH_L4_B_0_1 | RXH_L4_B_2_3;
-        /* fallthrough */
+                fallthrough;
         case IPV6_FLOW:
                 cmd->data |= RXH_IP_SRC | RXH_IP_DST;
                 break;
@@ -258,28 +258,6 @@ static void rtl8168_get_reta(struct rtl8168_private *tp, u32 *indir)
                 indir[i] = tp->rss_indir_tbl[i];
 }
 
-int rtl8168_get_rxfh(struct net_device *dev, u32 *indir, u8 *key,
-                     u8 *hfunc)
-{
-        struct rtl8168_private *tp = netdev_priv(dev);
-
-        netif_info(tp, drv, tp->dev, "rss get rxfh\n");
-
-        if (!(dev->features & NETIF_F_RXHASH))
-                return -EOPNOTSUPP;
-
-        if (hfunc)
-                *hfunc = ETH_RSS_HASH_TOP;
-
-        if (indir)
-                rtl8168_get_reta(tp, indir);
-
-        if (key)
-                memcpy(key, tp->rss_key, RTL8168_RSS_KEY_SIZE);
-
-        return 0;
-}
-
 static u32 rtl8168_rss_key_reg(struct rtl8168_private *tp)
 {
         return RSS_KEY_8168;
@@ -330,6 +308,88 @@ static void rtl8168_store_rss_key(struct rtl8168_private *tp)
                 rtl8168_eri_write(tp, rss_key_reg + i, 4, *rss_key++, ERIAR_ExGMAC);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+int rtl8168_get_rxfh(struct net_device *dev, struct ethtool_rxfh_param *rxfh)
+{
+        struct rtl8168_private *tp = netdev_priv(dev);
+
+        netif_info(tp, drv, tp->dev, "rss get rxfh\n");
+
+        if (!(dev->features & NETIF_F_RXHASH))
+                return -EOPNOTSUPP;
+
+        rxfh->hfunc = ETH_RSS_HASH_TOP;
+
+        if (rxfh->indir)
+                rtl8168_get_reta(tp, rxfh->indir);
+
+        if (rxfh->key)
+                memcpy(rxfh->key, tp->rss_key, RTL8168_RSS_KEY_SIZE);
+
+        return 0;
+}
+
+int rtl8168_set_rxfh(struct net_device *dev, struct ethtool_rxfh_param *rxfh,
+                     struct netlink_ext_ack *extack)
+{
+        struct rtl8168_private *tp = netdev_priv(dev);
+        u32 reta_entries = rtl8168_rss_indir_tbl_entries(tp);
+        int i;
+
+        netif_info(tp, drv, tp->dev, "rss set rxfh\n");
+
+        /* We require at least one supported parameter to be changed and no
+         * change in any of the unsupported parameters
+         */
+        if (rxfh->hfunc != ETH_RSS_HASH_NO_CHANGE && rxfh->hfunc != ETH_RSS_HASH_TOP)
+                return -EOPNOTSUPP;
+
+        /* Fill out the redirection table */
+        if (rxfh->indir) {
+                int max_queues = tp->num_rx_rings;
+
+                /* Verify user input. */
+                for (i = 0; i < reta_entries; i++)
+                        if (rxfh->indir[i] >= max_queues)
+                                return -EINVAL;
+
+                for (i = 0; i < reta_entries; i++)
+                        tp->rss_indir_tbl[i] = rxfh->indir[i];
+        }
+
+        /* Fill out the rss hash key */
+        if (rxfh->key)
+                memcpy(tp->rss_key, rxfh->key, RTL8168_RSS_KEY_SIZE);
+
+        rtl8168_store_reta(tp);
+
+        rtl8168_store_rss_key(tp);
+
+        return 0;
+}
+#else
+int rtl8168_get_rxfh(struct net_device *dev, u32 *indir, u8 *key,
+                     u8 *hfunc)
+{
+        struct rtl8168_private *tp = netdev_priv(dev);
+
+        netif_info(tp, drv, tp->dev, "rss get rxfh\n");
+
+        if (!(dev->features & NETIF_F_RXHASH))
+                return -EOPNOTSUPP;
+
+        if (hfunc)
+                *hfunc = ETH_RSS_HASH_TOP;
+
+        if (indir)
+                rtl8168_get_reta(tp, indir);
+
+        if (key)
+                memcpy(key, tp->rss_key, RTL8168_RSS_KEY_SIZE);
+
+        return 0;
+}
+
 int rtl8168_set_rxfh(struct net_device *dev, const u32 *indir,
                      const u8 *key, const u8 hfunc)
 {
@@ -368,6 +428,7 @@ int rtl8168_set_rxfh(struct net_device *dev, const u32 *indir,
 
         return 0;
 }
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0) */
 
 static u32 rtl8168_get_rx_desc_hash(struct rtl8168_private *tp,
                                     struct RxDescV2 *desc)

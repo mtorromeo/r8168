@@ -5,7 +5,7 @@
 # r8125 is the Linux device driver released for Realtek 2.5Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
-# Copyright(c) 2023 Realtek Semiconductor Corp. All rights reserved.
+# Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms of the GNU General Public License as published by the Free
@@ -50,10 +50,16 @@ int rtl8168_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
 int rtl8168_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd);
 u32 rtl8168_get_rxfh_key_size(struct net_device *netdev);
 u32 rtl8168_rss_indir_size(struct net_device *netdev);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)
+int rtl8168_get_rxfh(struct net_device *dev, struct ethtool_rxfh_param *rxfh);
+int rtl8168_set_rxfh(struct net_device *dev, struct ethtool_rxfh_param *rxfh,
+                     struct netlink_ext_ack *extack);
+#else
 int rtl8168_get_rxfh(struct net_device *netdev, u32 *indir, u8 *key,
                      u8 *hfunc);
 int rtl8168_set_rxfh(struct net_device *netdev, const u32 *indir,
                      const u8 *key, const u8 hfunc);
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0) */
 void rtl8168_rx_hash(struct rtl8168_private *tp,
                      struct RxDescV2 *desc,
                      struct sk_buff *skb);
