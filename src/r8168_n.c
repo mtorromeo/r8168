@@ -7941,7 +7941,11 @@ rtl8168_device_lpi_t_to_ethtool_lpi_t(struct rtl8168_private *tp , u32 lpi_timer
 }
 
 static int
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+rtl_ethtool_get_eee(struct net_device *net, struct ethtool_keee *edata)
+#else
 rtl_ethtool_get_eee(struct net_device *net, struct ethtool_eee *edata)
+#endif
 {
         struct rtl8168_private *tp = netdev_priv(net);
         struct ethtool_eee *eee = &tp->eee;
@@ -7975,9 +7979,15 @@ rtl_ethtool_get_eee(struct net_device *net, struct ethtool_eee *edata)
 
         edata->eee_enabled = !!val;
         edata->eee_active = !!(supported & adv & lp);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+        ethtool_convert_legacy_u32_to_link_mode(edata->supported, supported);
+        ethtool_convert_legacy_u32_to_link_mode(edata->advertised, adv);
+        ethtool_convert_legacy_u32_to_link_mode(edata->lp_advertised, lp);
+#else
         edata->supported = supported;
         edata->advertised = adv;
         edata->lp_advertised = lp;
+#endif
         edata->tx_lpi_enabled = edata->eee_enabled;
         edata->tx_lpi_timer = tx_lpi_timer;
 
@@ -7985,11 +7995,19 @@ rtl_ethtool_get_eee(struct net_device *net, struct ethtool_eee *edata)
 }
 
 static int
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+rtl_ethtool_set_eee(struct net_device *net, struct ethtool_keee *edata)
+#else
 rtl_ethtool_set_eee(struct net_device *net, struct ethtool_eee *edata)
+#endif
 {
         struct rtl8168_private *tp = netdev_priv(net);
         struct ethtool_eee *eee = &tp->eee;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+        u32 advertising, adv;
+#else
         u32 advertising;
+#endif
         int rc = 0;
 
         if (!rtl8168_support_eee(tp))
@@ -8013,6 +8031,18 @@ rtl_ethtool_set_eee(struct net_device *net, struct ethtool_eee *edata)
         }
 
         advertising = tp->advertising;
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+        ethtool_convert_link_mode_to_legacy_u32(&adv, edata->advertised);
+        if (linkmode_empty(edata->advertised)) {
+                adv = advertising & eee->supported;
+                ethtool_convert_legacy_u32_to_link_mode(edata->advertised, adv);
+        } else if (!linkmode_empty(edata->advertised) & ~advertising) {
+                dev_printk(KERN_WARNING, tp_to_dev(tp), "EEE advertised %x must be a subset of autoneg advertised speeds %x\n",
+                           adv, advertising);
+                rc = -EINVAL;
+                goto out;
+        }
+#else
         if (!edata->advertised) {
                 edata->advertised = advertising & eee->supported;
         } else if (edata->advertised & ~advertising) {
@@ -8021,15 +8051,29 @@ rtl_ethtool_set_eee(struct net_device *net, struct ethtool_eee *edata)
                 rc = -EINVAL;
                 goto out;
         }
+#endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+        if (!linkmode_empty(edata->advertised) & ~eee->supported) {
+                dev_printk(KERN_WARNING, tp_to_dev(tp), "EEE advertised %x must be a subset of support %x\n",
+                           adv, eee->supported);
+                rc = -EINVAL;
+                goto out;
+        }
+#else
         if (edata->advertised & ~eee->supported) {
                 dev_printk(KERN_WARNING, tp_to_dev(tp), "EEE advertised %x must be a subset of support %x\n",
                            edata->advertised, eee->supported);
                 rc = -EINVAL;
                 goto out;
         }
+#endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+        ethtool_convert_link_mode_to_legacy_u32(&eee->advertised, edata->advertised);
+#else
         eee->advertised = edata->advertised;
+#endif
         eee->eee_enabled = edata->eee_enabled;
 
         if (eee->eee_enabled)
