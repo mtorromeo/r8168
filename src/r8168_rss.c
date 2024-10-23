@@ -80,8 +80,6 @@ int rtl8168_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
         struct rtl8168_private *tp = netdev_priv(dev);
         int ret = -EOPNOTSUPP;
 
-        netif_info(tp, drv, tp->dev, "rss get rxnfc\n");
-
         if (!(dev->features & NETIF_F_RXHASH))
                 return ret;
 
@@ -135,8 +133,6 @@ static int rtl8168_set_rss_hash_opt(struct rtl8168_private *tp,
                                     struct ethtool_rxnfc *nfc)
 {
         u32 rss_flags = tp->rss_flags;
-
-        netif_info(tp, drv, tp->dev, "rss set hash\n");
 
         /*
          * RSS does not support anything other than hashing
@@ -205,8 +201,6 @@ int rtl8168_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
         struct rtl8168_private *tp = netdev_priv(dev);
         int ret = -EOPNOTSUPP;
 
-        netif_info(tp, drv, tp->dev, "rss set rxnfc\n");
-
         if (!(dev->features & NETIF_F_RXHASH))
                 return ret;
 
@@ -230,8 +224,6 @@ u32 rtl8168_get_rxfh_key_size(struct net_device *dev)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        netif_info(tp, drv, tp->dev, "rss get key size\n");
-
         if (!(dev->features & NETIF_F_RXHASH))
                 return 0;
 
@@ -241,8 +233,6 @@ u32 rtl8168_get_rxfh_key_size(struct net_device *dev)
 u32 rtl8168_rss_indir_size(struct net_device *dev)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
-
-        netif_info(tp, drv, tp->dev, "rss get indir tbl size\n");
 
         if (!(dev->features & NETIF_F_RXHASH))
                 return 0;
@@ -313,8 +303,6 @@ int rtl8168_get_rxfh(struct net_device *dev, struct ethtool_rxfh_param *rxfh)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        netif_info(tp, drv, tp->dev, "rss get rxfh\n");
-
         if (!(dev->features & NETIF_F_RXHASH))
                 return -EOPNOTSUPP;
 
@@ -335,8 +323,6 @@ int rtl8168_set_rxfh(struct net_device *dev, struct ethtool_rxfh_param *rxfh,
         struct rtl8168_private *tp = netdev_priv(dev);
         u32 reta_entries = rtl8168_rss_indir_tbl_entries(tp);
         int i;
-
-        netif_info(tp, drv, tp->dev, "rss set rxfh\n");
 
         /* We require at least one supported parameter to be changed and no
          * change in any of the unsupported parameters
@@ -373,8 +359,6 @@ int rtl8168_get_rxfh(struct net_device *dev, u32 *indir, u8 *key,
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        netif_info(tp, drv, tp->dev, "rss get rxfh\n");
-
         if (!(dev->features & NETIF_F_RXHASH))
                 return -EOPNOTSUPP;
 
@@ -396,8 +380,6 @@ int rtl8168_set_rxfh(struct net_device *dev, const u32 *indir,
         struct rtl8168_private *tp = netdev_priv(dev);
         u32 reta_entries = rtl8168_rss_indir_tbl_entries(tp);
         int i;
-
-        netif_info(tp, drv, tp->dev, "rss set rxfh\n");
 
         /* We require at least one supported parameter to be changed and no
          * change in any of the unsupported parameters

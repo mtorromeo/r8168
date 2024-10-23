@@ -1701,6 +1701,26 @@ static int proc_dump_tx_desc(struct seq_file *m, void *v)
 
         rtnl_lock();
 
+#ifdef ENABLE_LIB_SUPPORT
+        (void)i;
+        if (tp->tx_ring[0].TxDescArray) {
+                struct rtl8168_tx_ring *ring = &tp->tx_ring[0];
+
+                seq_printf(m, "\ndump rtk tx desc:%d\n", ring->num_tx_desc);
+                _proc_dump_tx_desc(m, ring->TxDescArray,
+                                   ring->TxDescAllocSize,
+                                   ring->num_tx_desc);
+        }
+
+        if (tp->lib_tx_ring[1].desc_addr) {
+                struct rtl8168_ring *ring = &tp->lib_tx_ring[1];
+
+                seq_printf(m, "\ndump lib tx desc:%d\n", ring->ring_size);
+                _proc_dump_tx_desc(m, ring->desc_addr,
+                                   ring->desc_size,
+                                   ring->ring_size);
+        }
+#else
         for (i=0; i<tp->HwSuppNumTxQueues; i++) {
                 struct rtl8168_tx_ring *ring = &tp->tx_ring[i];
                 if (!ring->TxDescArray)
@@ -1709,17 +1729,6 @@ static int proc_dump_tx_desc(struct seq_file *m, void *v)
                 _proc_dump_tx_desc(m, ring->TxDescArray,
                                    ring->TxDescAllocSize,
                                    ring->num_tx_desc);
-        }
-
-#ifdef ENABLE_LIB_SUPPORT
-        for (i=0; i<tp->HwSuppNumTxQueues; i++) {
-                struct rtl8168_ring *ring = &tp->lib_tx_ring[i];
-                if (!ring->desc_addr)
-                        continue;
-                seq_printf(m, "\ndump lib Q%d tx desc:%d\n", i, ring->ring_size);
-                _proc_dump_tx_desc(m, ring->desc_addr,
-                                   ring->desc_size,
-                                   ring->ring_size);
         }
 #endif //ENABLE_LIB_SUPPORT
 
@@ -1883,7 +1892,6 @@ static int proc_get_driver_variable(char *page, char **start,
                         "num_tx_rings\t0x%x\n"
                         "tot_rx_rings\t0x%x\n"
                         "tot_tx_rings\t0x%x\n"
-                        "tot_rx_desc_rings\t0x%x\n"
                         "HwSuppNumTxQueues\t0x%x\n"
                         "HwSuppNumRxQueues\t0x%x\n"
                         "num_hw_tot_en_rx_rings\t0x%x\n"
@@ -2029,8 +2037,6 @@ static int proc_get_tally_counter(char *page, char **start,
         struct rtl8168_private *tp = netdev_priv(dev);
         struct rtl8168_counters *counters;
         dma_addr_t paddr;
-        u32 cmd;
-        u32 WaitCnt;
         int len = 0;
 
         len += snprintf(page + len, count - len,
@@ -2499,7 +2505,7 @@ void _proc_dump_tx_desc(char *page, int *page_len, int *count,
                                 pdword[i]);
         }
 
-        len += snprintf(page + len, count - len, "\n");
+        len += snprintf(page + len, *count - len, "\n");
 
         *page_len = len;
         return;
@@ -2511,7 +2517,6 @@ static int proc_dump_tx_desc(char *page, char **start,
 {
         int i;
         int len = 0;
-        u32 *pdword;
         struct net_device *dev = data;
         struct rtl8168_private *tp = netdev_priv(dev);
         struct rtl8168_tx_ring *ring = &tp->tx_ring[0];
@@ -2521,13 +2526,13 @@ static int proc_dump_tx_desc(char *page, char **start,
 
         rtnl_lock();
 
-        for (i=0; i<tp->HwSuppNumTxQueues; i++) {
-                struct rtl8168_tx_ring *ring = &tp->tx_ring[i];
-                if (!ring->TxDescArray)
-                        continue;
+#ifdef ENABLE_LIB_SUPPORT
+        (void)i;
+        if (tp->tx_ring[0].TxDescArray) {
+                struct rtl8168_tx_ring *ring = &tp->tx_ring[0];
+
                 len += snprintf(page + len, count - len,
-                                "\ndump Q%d tx desc:%d",
-                                i,
+                                "\ndump rtk tx desc:%d\n",
                                 ring->num_tx_desc);
                 _proc_dump_tx_desc(page, &len, &count,
                                    ring->TxDescArray,
@@ -2535,72 +2540,32 @@ static int proc_dump_tx_desc(char *page, char **start,
                                    ring->num_tx_desc);
         }
 
-#ifdef ENABLE_LIB_SUPPORT
-        for (i=0; i<tp->HwSuppNumTxQueues; i++) {
-                struct rtl8168_ring *ring = &tp->lib_tx_ring[i];
-                if (!ring->desc_addr)
-                        continue;
+        if (tp->lib_tx_ring[1].desc_addr) {
+                struct rtl8168_ring *ring = &tp->lib_tx_ring[1];
+
                 len += snprintf(page + len, count - len,
-                                "\ndump lib Q%d tx desc:%d",
-                                i,
+                                "\ndump lib tx desc:%d\n",
                                 ring->ring_size);
-                _proc_dump_tx_desc(page, &len, ring->desc_addr,
+                _proc_dump_tx_desc(page, &len, &count,
+                                   ring->desc_addr,
                                    ring->desc_size,
                                    ring->ring_size);
         }
+#else
+        for (i=0; i<tp->HwSuppNumTxQueues; i++) {
+                struct rtl8168_tx_ring *ring = &tp->tx_ring[i];
+                if (!ring->TxDescArray)
+                        continue;
+                len += snprintf(page + len, count - len,
+                                "\ndump Q%d tx desc:%d\n",
+                                i,
+                                ring->num_tx_desc);
+                _proc_dump_tx_desc(page, &len, &count,
+                                   ring->TxDescArray,
+                                   ring->TxDescAllocSize,
+                                   ring->num_tx_desc);
+        }
 #endif //ENABLE_LIB_SUPPORT
-
-        rtnl_unlock();
-
-        len += snprintf(page + len, count - len, "\n");
-
-        *eof = 1;
-
-        return len;
-}
-
-static int proc_dump_tx_desc(char *page, char **start,
-                             off_t offset, int count,
-                             int *eof, void *data)
-{
-        int i;
-        struct net_device *dev = m->private;
-        struct rtl8168_private *tp = netdev_priv(dev);
-
-        switch (tp->mcfg) {
-        case CFG_METHOD_1 ... CFG_METHOD_8:
-                return -EOPNOTSUPP;
-        default:
-                break;
-        }
-
-        rtnl_lock();
-
-        len += snprintf(page + len, count - len,
-                        "\ndump MSI-X Table. Total Entry %d. \n",
-                        R8168_MAX_MSIX_VEC);
-
-        for (i=0; i<R8168_MAX_MSIX_VEC; i++) {
-                len += snprintf(page + len, count - len,
-                                "\n%04x ",
-                                i);
-                len += snprintf(page + len, count - len,
-                                "%08x ",
-                                rtl8168_eri_read(tp, i*0x10, 4,
-                                                 ERIAR_MSIX));
-                len += snprintf(page + len, count - len,
-                                "%08x ",
-                                rtl8168_eri_read(tp, i*0x10 + 4, 4,
-                                                 ERIAR_MSIX));
-                len += snprintf(page + len, count - len,
-                                "%08x ",
-                                rtl8168_eri_read(tp, i*0x10 + 8, 4,
-                                                 ERIAR_MSIX));
-                len += snprintf(page + len, count - len,
-                                "%08x ",
-                                rtl8168_eri_read(tp, i*0x10 + 12, 4,
-                                                 ERIAR_MSIX));
-        }
 
         rtnl_unlock();
 
@@ -3625,7 +3590,20 @@ void rtl8168_oob_notify(struct rtl8168_private *tp, u8 cmd)
         rtl8168_ocp_write(tp, 0x30, 1, 0x01);
 }
 
-static int rtl8168_check_dash(struct rtl8168_private *tp)
+static u32 rtl8168_get_dash_fw_ver(struct rtl8168_private *tp)
+{
+        u32 ver = 0xffffffff;
+
+        if (!HW_DASH_SUPPORT_GET_FIRMWARE_VERSION(tp))
+                goto exit;
+
+        ver = rtl8168_ocp_read(tp, OCP_REG_FIRMWARE_MAJOR_VERSION, 4);
+
+exit:
+        return ver;
+}
+
+static int _rtl8168_check_dash(struct rtl8168_private *tp)
 {
         if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
                 if (rtl8168_ocp_read(tp, 0x128, 1) & BIT_0)
@@ -3647,12 +3625,31 @@ static int rtl8168_check_dash(struct rtl8168_private *tp)
         }
 }
 
+static int rtl8168_check_dash(struct rtl8168_private *tp)
+{
+        int dash_enabled;
+        u32 fw_ver;
+
+        dash_enabled = _rtl8168_check_dash(tp);
+        if (!dash_enabled)
+                goto exit;
+
+        if (!HW_DASH_SUPPORT_GET_FIRMWARE_VERSION(tp))
+                goto exit;
+
+        fw_ver = rtl8168_get_dash_fw_ver(tp);
+        if (fw_ver == 0 || fw_ver == 0xffffffff)
+                dash_enabled = 0;
+exit:
+        return dash_enabled;
+}
+
 void rtl8168_dash2_disable_tx(struct rtl8168_private *tp)
 {
         if (!tp->DASH)
                 return;
 
-        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
+        if (HW_DASH_SUPPORT_CMAC(tp)) {
                 u16 WaitCnt;
                 u8 TmpUchar;
 
@@ -3682,7 +3679,7 @@ void rtl8168_dash2_enable_tx(struct rtl8168_private *tp)
         if (!tp->DASH)
                 return;
 
-        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp))
+        if (HW_DASH_SUPPORT_CMAC(tp))
                 RTL_CMAC_W8(tp, CMAC_IBCR2, RTL_CMAC_R8(tp, CMAC_IBCR2) | BIT_0);
 }
 
@@ -3691,7 +3688,7 @@ void rtl8168_dash2_disable_rx(struct rtl8168_private *tp)
         if (!tp->DASH)
                 return;
 
-        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp))
+        if (HW_DASH_SUPPORT_CMAC(tp))
                 RTL_CMAC_W8(tp, CMAC_IBCR0, RTL_CMAC_R8(tp, CMAC_IBCR0) & ~(BIT_0));
 }
 
@@ -3700,7 +3697,7 @@ void rtl8168_dash2_enable_rx(struct rtl8168_private *tp)
         if (!tp->DASH)
                 return;
 
-        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp))
+        if (HW_DASH_SUPPORT_CMAC(tp))
                 RTL_CMAC_W8(tp, CMAC_IBCR0, RTL_CMAC_R8(tp, CMAC_IBCR0) | BIT_0);
 }
 
@@ -3708,7 +3705,7 @@ static void rtl8168_dash2_disable_txrx(struct net_device *dev)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
+        if (HW_DASH_SUPPORT_CMAC(tp)) {
                 rtl8168_dash2_disable_tx(tp);
                 rtl8168_dash2_disable_rx(tp);
         }
@@ -4670,9 +4667,8 @@ rtl8168_irq_mask_and_ack(struct rtl8168_private *tp)
                                                     rtl8168_get_isr_by_vector(tp, 0) &
                                                     ~(ISRIMR_DASH_INTR_EN | ISRIMR_DASH_INTR_CMAC_RESET));
                 } else {
-                        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
+                        if (HW_DASH_SUPPORT_CMAC(tp))
                                 RTL_CMAC_W8(tp, CMAC_IBISR0, RTL_CMAC_R8(tp, CMAC_IBISR0));
-                        }
                 }
         } else {
                 rtl8168_self_clear_isr_by_vector(tp, 0);
@@ -5215,7 +5211,7 @@ NICChkTypeEnableDashInterrupt(struct rtl8168_private *tp)
                 //
                 // even disconnected, enable 3 dash interrupt mask bits for in-band/out-band communication
                 //
-                if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
+                if (HW_DASH_SUPPORT_CMAC(tp)) {
                         rtl8168_enable_dash2_interrupt(tp);
                         RTL_W16(tp, tp->imr_reg[0], (ISRIMR_DASH_INTR_EN | ISRIMR_DASH_INTR_CMAC_RESET));
                 } else {
@@ -6680,7 +6676,6 @@ rtl8168_set_settings(struct net_device *dev,
 static u32
 rtl8168_get_tx_csum(struct net_device *dev)
 {
-        struct rtl8168_private *tp = netdev_priv(dev);
         u32 ret;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3,0,0)
@@ -7605,8 +7600,8 @@ static int rtl8168_enable_eee(struct rtl8168_private *tp)
         int ret;
         u16 data;
         u32 csi_tmp;
-        struct ethtool_eee *eee = &tp->eee;
-        u16 eee_adv_t = ethtool_adv_to_mmd_eee_adv_t(eee->advertised);
+        struct ethtool_keee *eee = &tp->eee;
+        u16 eee_adv_cap1_t = rtl8168_ethtool_adv_to_mmd_eee_adv_cap1_t(eee->advertised);
 
         ret = 0;
         switch (tp->mcfg) {
@@ -7709,7 +7704,7 @@ static int rtl8168_enable_eee(struct rtl8168_private *tp)
                 data = rtl8168_mdio_read(tp, 0x11);
                 rtl8168_mdio_write(tp, 0x11, data | BIT_4);
                 rtl8168_mdio_write(tp, 0x1F, 0x0A5D);
-                rtl8168_mdio_write(tp, 0x10, eee_adv_t);
+                rtl8168_mdio_write(tp, 0x10, eee_adv_cap1_t);
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
                 break;
 
@@ -7940,6 +7935,127 @@ rtl8168_device_lpi_t_to_ethtool_lpi_t(struct rtl8168_private *tp , u32 lpi_timer
         return to_us;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0)
+static void
+rtl8168_adv_to_linkmode(unsigned long *mode, u64 adv)
+{
+        linkmode_zero(mode);
+
+        if (adv & ADVERTISED_10baseT_Half)
+                linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Half_BIT, mode);
+        if (adv & ADVERTISED_10baseT_Full)
+                linkmode_set_bit(ETHTOOL_LINK_MODE_10baseT_Full_BIT, mode);
+        if (adv & ADVERTISED_100baseT_Half)
+                linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Half_BIT, mode);
+        if (adv & ADVERTISED_100baseT_Full)
+                linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, mode);
+        if (adv & ADVERTISED_1000baseT_Half)
+                linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Half_BIT, mode);
+        if (adv & ADVERTISED_1000baseT_Full)
+                linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, mode);
+        if (adv & ADVERTISED_2500baseX_Full)
+                linkmode_set_bit(ETHTOOL_LINK_MODE_2500baseT_Full_BIT, mode);
+}
+
+static int
+rtl_ethtool_get_eee(struct net_device *net, struct ethtool_keee *edata)
+{
+        __ETHTOOL_DECLARE_LINK_MODE_MASK(common);
+        struct rtl8168_private *tp = netdev_priv(net);
+        struct ethtool_keee *eee = &tp->eee;
+        u32 tx_lpi_timer;
+        u16 val;
+
+        if (!rtl8168_support_eee(tp))
+                return -EOPNOTSUPP;
+
+        if (unlikely(tp->rtk_enable_diag))
+                return -EBUSY;
+
+        /* Get LP advertisement EEE */
+        rtl8168_mdio_write(tp, 0x1F, 0x0A5D);
+        val = rtl8168_mdio_read(tp, 0x11);
+        mii_eee_cap1_mod_linkmode_t(edata->lp_advertised, val);;
+
+        /* Get EEE Tx LPI timer*/
+        tx_lpi_timer = rtl8168_device_lpi_t_to_ethtool_lpi_t(tp, eee->tx_lpi_timer);
+
+        val = rtl8168_eri_read(tp, 0x1B0, 2, ERIAR_ExGMAC);
+        val &= BIT_1 | BIT_0;
+
+        rtl8168_mdio_write(tp, 0x1F, 0x0000);
+
+        edata->eee_enabled = !!val;
+        linkmode_copy(edata->supported, eee->supported);
+        linkmode_copy(edata->advertised, eee->advertised);
+        edata->tx_lpi_enabled = edata->eee_enabled;
+        edata->tx_lpi_timer = tx_lpi_timer;
+        linkmode_and(common, edata->advertised, edata->lp_advertised);
+        edata->eee_active = !linkmode_empty(common);
+
+        return 0;
+}
+
+static int
+rtl_ethtool_set_eee(struct net_device *net, struct ethtool_keee *edata)
+{
+        __ETHTOOL_DECLARE_LINK_MODE_MASK(advertising);
+        __ETHTOOL_DECLARE_LINK_MODE_MASK(tmp);
+        struct rtl8168_private *tp = netdev_priv(net);
+        struct ethtool_keee *eee = &tp->eee;
+        int rc = 0;
+
+        if (!rtl8168_support_eee(tp))
+                return -EOPNOTSUPP;
+
+        if (HW_SUPP_SERDES_PHY(tp) ||
+            !HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp) ||
+            tp->DASH)
+                return -EOPNOTSUPP;
+
+        if (unlikely(tp->rtk_enable_diag)) {
+                dev_printk(KERN_WARNING, tp_to_dev(tp), "Diag Enabled\n");
+                rc = -EBUSY;
+                goto out;
+        }
+
+        if (tp->autoneg != AUTONEG_ENABLE) {
+                dev_printk(KERN_WARNING, tp_to_dev(tp), "EEE requires autoneg\n");
+                rc = -EINVAL;
+                goto out;
+        }
+
+        rtl8168_adv_to_linkmode(advertising, tp->advertising);
+        if (linkmode_empty(edata->advertised)) {
+                linkmode_and(edata->advertised, advertising, eee->supported);
+        } else if (linkmode_andnot(tmp, edata->advertised, advertising)) {
+                dev_printk(KERN_WARNING, tp_to_dev(tp), "EEE advertised must be a subset of autoneg advertised speeds\n");
+                rc = -EINVAL;
+                goto out;
+        }
+
+        if (linkmode_andnot(tmp, edata->advertised, eee->supported)) {
+                dev_printk(KERN_WARNING, tp_to_dev(tp), "EEE advertised must be a subset of support \n");
+                rc = -EINVAL;
+                goto out;
+        }
+
+        linkmode_copy(eee->advertised, edata->advertised);
+        eee->tx_lpi_enabled = edata->tx_lpi_enabled;
+        eee->tx_lpi_timer = edata->tx_lpi_timer;
+        eee->eee_enabled = edata->eee_enabled;
+
+        if (eee->eee_enabled)
+                rtl8168_enable_eee(tp);
+        else
+                rtl8168_disable_eee(tp);
+
+        rtl_nway_reset(net);
+
+out:
+        return rc;
+}
+#else
 static int
 rtl_ethtool_get_eee(struct net_device *net, struct ethtool_eee *edata)
 {
@@ -8039,12 +8155,10 @@ rtl_ethtool_set_eee(struct net_device *net, struct ethtool_eee *edata)
 
         rtl_nway_reset(net);
 
-        return rc;
-
 out:
-
         return rc;
 }
+#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(6,9,0) */
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0) */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0)
@@ -26187,7 +26301,7 @@ err1:
 
 #ifdef ENABLE_DASH_SUPPORT
         if (tp->DASH) {
-                if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
+                if (HW_DASH_SUPPORT_CMAC(tp)) {
                         tp->timer_intr_mask |= (ISRIMR_DASH_INTR_EN | ISRIMR_DASH_INTR_CMAC_RESET);
                         tp->intr_mask |= (ISRIMR_DASH_INTR_EN | ISRIMR_DASH_INTR_CMAC_RESET);
                 } else {
@@ -26660,12 +26774,19 @@ err1:
 #endif //LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
 
         if (rtl8168_support_eee(tp)) {
-                struct ethtool_eee *eee = &tp->eee;
+                struct ethtool_keee *eee = &tp->eee;
 
                 eee->eee_enabled = eee_enable;
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0)
                 eee->supported  = SUPPORTED_100baseT_Full |
                                   SUPPORTED_1000baseT_Full;
                 eee->advertised = mmd_eee_adv_to_ethtool_adv_t(MDIO_EEE_1000T | MDIO_EEE_100TX);
+#else
+                linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, eee->supported);
+                linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, eee->supported);
+                linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, eee->advertised);
+                linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, eee->advertised);
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0) */
                 eee->tx_lpi_enabled = eee_enable;
                 eee->tx_lpi_timer = dev->mtu + ETH_HLEN + 0x20;
         }
@@ -28178,6 +28299,31 @@ rtl8168_link_timer(struct timer_list *t)
 */
 
 #ifndef ENABLE_RSS_SUPPORT
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0)
+static int pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
+                                 int minvec, int maxvec)
+{
+        int nvec = maxvec;
+        int rc;
+
+        if (maxvec < minvec)
+                return -ERANGE;
+
+        do {
+                rc = pci_enable_msix(dev, entries, nvec);
+                if (rc < 0) {
+                        return rc;
+                } else if (rc > 0) {
+                        if (rc < minvec)
+                                return -ENOSPC;
+                        nvec = rc;
+                }
+        } while (rc);
+
+        return nvec;
+}
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0) */
+
 static int rtl8168_enable_msix(struct rtl8168_private *tp)
 {
         int i, nvecs = 0;
@@ -28629,7 +28775,9 @@ rtl8168_init_one(struct pci_dev *pdev,
 
         netif_carrier_off(dev);
 
+#ifdef ENABLE_R8168_SYSFS
         rtl8168_sysfs_init(dev);
+#endif /* ENABLE_R8168_SYSFS */
 
         printk("%s", GPL_CLAIM);
 
@@ -29022,12 +29170,14 @@ static void
 set_offset70F(struct rtl8168_private *tp, u8 setting)
 {
         u32 csi_tmp;
-        u32 temp = (u32)setting;
-        temp = temp << 24;
+        u32 temp;
+
+        temp = setting & 0x3f;
+        temp <<= 24;
         /*set PCI configuration space offset 0x70F to setting*/
         /*When the register offset of PCI configuration space larger than 0xff, use CSI to access it.*/
 
-        csi_tmp = rtl8168_csi_read(tp, 0x70c) & 0x00ffffff;
+        csi_tmp = rtl8168_csi_read(tp, 0x70c) & 0xc0ffffff;
         rtl8168_csi_write(tp, 0x70c, csi_tmp | temp);
 }
 
@@ -29619,11 +29769,11 @@ rtl8168_hw_config(struct net_device *dev)
 
                 rtl8168_eri_write(tp, 0xC8, 4, 0x00080002, ERIAR_ExGMAC);
 #ifdef ENABLE_LIB_SUPPORT
-                rtl8168_eri_write(tp, 0xCC, 1, 0x60, ERIAR_ExGMAC);
-                rtl8168_eri_write(tp, 0xD0, 1, 0x70, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xCC, 2, 0x60, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xD0, 2, 0x70, ERIAR_ExGMAC);
 #else
-                rtl8168_eri_write(tp, 0xCC, 1, 0x38, ERIAR_ExGMAC);
-                rtl8168_eri_write(tp, 0xD0, 1, 0x48, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xCC, 2, 0x38, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xD0, 2, 0x48, ERIAR_ExGMAC);
 #endif //ENABLE_LIB_SUPPORT
                 rtl8168_eri_write(tp, 0xE8, 4, 0x00100006, ERIAR_ExGMAC);
 
@@ -29761,8 +29911,8 @@ rtl8168_hw_config(struct net_device *dev)
                 set_offset79(tp, 0x50);
 
                 rtl8168_eri_write(tp, 0xC8, 4, 0x00080002, ERIAR_ExGMAC);
-                rtl8168_eri_write(tp, 0xCC, 1, 0x2F, ERIAR_ExGMAC);
-                rtl8168_eri_write(tp, 0xD0, 1, 0x5F, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xCC, 2, 0x2F, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xD0, 2, 0x5F, ERIAR_ExGMAC);
                 rtl8168_eri_write(tp, 0xE8, 4, 0x00100006, ERIAR_ExGMAC);
 
                 RTL_W32(tp, TxConfig, RTL_R32(tp, TxConfig) | BIT_7);
@@ -29836,8 +29986,8 @@ rtl8168_hw_config(struct net_device *dev)
                 set_offset79(tp, 0x50);
 
                 rtl8168_eri_write(tp, 0xC8, 4, 0x00080002, ERIAR_ExGMAC);
-                rtl8168_eri_write(tp, 0xCC, 1, 0x2F, ERIAR_ExGMAC);
-                rtl8168_eri_write(tp, 0xD0, 1, 0x5F, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xCC, 2, 0x2F, ERIAR_ExGMAC);
+                rtl8168_eri_write(tp, 0xD0, 2, 0x5F, ERIAR_ExGMAC);
                 rtl8168_eri_write(tp, 0xE8, 4, 0x00100006, ERIAR_ExGMAC);
 
                 RTL_W32(tp, TxConfig, RTL_R32(tp, TxConfig) | BIT_7);
@@ -31867,8 +32017,10 @@ static int rtl8168_poll_vector(napi_ptr napi, napi_budget budget, bool all_rx_q)
         if (all_rx_q)
                 for (i = 0; i < tp->num_hw_tot_en_rx_rings; i++)
                         work_done += rtl8168_rx_interrupt(dev, tp, &tp->rx_ring[i], budget);
-        else
+        else if (message_id < tp->num_rx_rings)
                 work_done += rtl8168_rx_interrupt(dev, tp, &tp->rx_ring[message_id], budget);
+
+        work_done = min(work_done, work_to_do);
 
         RTL_NAPI_QUOTA_UPDATE(dev, work_done, budget);
 
@@ -31913,7 +32065,8 @@ static int rtl8168_poll_msix_rx(napi_ptr napi, napi_budget budget)
         unsigned int work_to_do = RTL_NAPI_QUOTA(budget, dev);
         unsigned int work_done = 0;
 
-        work_done += rtl8168_rx_interrupt(dev, tp, &tp->rx_ring[message_id], budget);
+        if (message_id < tp->num_rx_rings)
+                work_done += rtl8168_rx_interrupt(dev, tp, &tp->rx_ring[message_id], budget);
 
         RTL_NAPI_QUOTA_UPDATE(dev, work_done, budget);
 

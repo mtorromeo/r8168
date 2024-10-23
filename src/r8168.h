@@ -53,6 +53,68 @@
 #define fallthrough
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0)
+#define netif_xmit_stopped netif_tx_queue_stopped
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) */
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0)
+#ifndef MDIO_AN_EEE_ADV_100TX
+#define MDIO_AN_EEE_ADV_100TX	0x0002	/* Advertise 100TX EEE cap */
+#endif
+#ifndef MDIO_AN_EEE_ADV_1000T
+#define MDIO_AN_EEE_ADV_1000T	0x0004	/* Advertise 1000T EEE cap */
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)
+#define MDIO_EEE_100TX		MDIO_AN_EEE_ADV_100TX	/* 100TX EEE cap */
+#define MDIO_EEE_1000T		MDIO_AN_EEE_ADV_1000T	/* 1000T EEE cap */
+#define MDIO_EEE_10GT		0x0008	/* 10GT EEE cap */
+#define MDIO_EEE_1000KX		0x0010	/* 1000KX EEE cap */
+#define MDIO_EEE_10GKX4		0x0020	/* 10G KX4 EEE cap */
+#define MDIO_EEE_10GKR		0x0040	/* 10G KR EEE cap */
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0) */
+
+static inline u32 mmd_eee_adv_to_ethtool_adv_t(u16 eee_adv)
+{
+        u32 adv = 0;
+
+        if (eee_adv & MDIO_EEE_100TX)
+                adv |= ADVERTISED_100baseT_Full;
+        if (eee_adv & MDIO_EEE_1000T)
+                adv |= ADVERTISED_1000baseT_Full;
+        if (eee_adv & MDIO_EEE_10GT)
+                adv |= ADVERTISED_10000baseT_Full;
+        if (eee_adv & MDIO_EEE_1000KX)
+                adv |= ADVERTISED_1000baseKX_Full;
+        if (eee_adv & MDIO_EEE_10GKX4)
+                adv |= ADVERTISED_10000baseKX4_Full;
+        if (eee_adv & MDIO_EEE_10GKR)
+                adv |= ADVERTISED_10000baseKR_Full;
+
+        return adv;
+}
+
+static inline u16 ethtool_adv_to_mmd_eee_adv_t(u32 adv)
+{
+        u16 reg = 0;
+
+        if (adv & ADVERTISED_100baseT_Full)
+                reg |= MDIO_EEE_100TX;
+        if (adv & ADVERTISED_1000baseT_Full)
+                reg |= MDIO_EEE_1000T;
+        if (adv & ADVERTISED_10000baseT_Full)
+                reg |= MDIO_EEE_10GT;
+        if (adv & ADVERTISED_1000baseKX_Full)
+                reg |= MDIO_EEE_1000KX;
+        if (adv & ADVERTISED_10000baseKX4_Full)
+                reg |= MDIO_EEE_10GKX4;
+        if (adv & ADVERTISED_10000baseKR_Full)
+                reg |= MDIO_EEE_10GKR;
+
+        return reg;
+}
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0) */
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,3,0)
 static inline
 ssize_t strscpy(char *dest, const char *src, size_t count)
@@ -238,7 +300,7 @@ do { \
 #define ENABLE_R8168_PROCFS
 #endif
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,11,0)
 #define ENABLE_R8168_SYSFS
 #endif
 
@@ -349,6 +411,13 @@ do { \
 #define  MDIO_EEE_1000T  0x0004
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0)
+#define ethtool_keee ethtool_eee
+#define rtl8168_ethtool_adv_to_mmd_eee_adv_cap1_t ethtool_adv_to_mmd_eee_adv_t
+#else
+#define rtl8168_ethtool_adv_to_mmd_eee_adv_cap1_t linkmode_to_mii_eee_cap1_t
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0) */
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29)
 #ifdef CONFIG_NET_POLL_CONTROLLER
 #define RTL_NET_POLL_CONTROLLER dev->poll_controller=rtl8168_netpoll
@@ -431,7 +500,7 @@ do { \
 #define RSS_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.053.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX RSS_SUFFIX
+#define RTL8168_VERSION "8.054.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX RSS_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
@@ -611,6 +680,13 @@ This is free software, and you are welcome to redistribute it under certain cond
 
 #ifndef ETH_MIN_MTU
 #define ETH_MIN_MTU  68
+#endif
+
+#ifndef WRITE_ONCE
+#define WRITE_ONCE(var, val) (*((volatile typeof(val) *)(&(var))) = (val))
+#endif
+#ifndef READ_ONCE
+#define READ_ONCE(var) (*((volatile typeof(var) *)(&(var))))
 #endif
 
 /*****************************************************************************/
@@ -1179,10 +1255,17 @@ enum RTL8168_registers {
         CounterAddrLow      = 0x10,
         CounterAddrHigh     = 0x14,
         CustomLED       = 0x18,
+#ifdef ENABLE_LIB_SUPPORT
+        TxDescStartAddrLow  = 0x28,
+        TxDescStartAddrHigh = 0x2c,
+        TxHDescStartAddrLow = 0x20,
+        TxHDescStartAddrHigh    = 0x24,
+#else
         TxDescStartAddrLow  = 0x20,
         TxDescStartAddrHigh = 0x24,
         TxHDescStartAddrLow = 0x28,
         TxHDescStartAddrHigh    = 0x2c,
+#endif /* ENABLE_LIB_SUPPORT */
         FLASH           = 0x30,
         ERSR            = 0x36,
         ChipCmd         = 0x37,
@@ -1891,6 +1974,20 @@ struct rtl8168_counters {
         u16 tx_underrun;
 };
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0)
+struct ethtool_eee {
+        __u32	cmd;
+        __u32	supported;
+        __u32	advertised;
+        __u32	lp_advertised;
+        __u32	eee_active;
+        __u32	eee_enabled;
+        __u32	tx_lpi_enabled;
+        __u32	tx_lpi_timer;
+        __u32	reserved[2];
+};
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3,6,0) */
+
 struct rtl8168_private {
         void __iomem *mmio_addr;    /* memory map physical address */
         struct pci_dev *pci_dev;    /* Index of PCI device */
@@ -2143,7 +2240,7 @@ struct rtl8168_private {
         //Realwow--------------
 #endif //ENABLE_REALWOW_SUPPORT
 
-        struct ethtool_eee eee;
+        struct ethtool_keee eee;
 
         u32 dynamic_aspm_packet_count;
 
@@ -2449,9 +2546,8 @@ rtl8168_enable_dash2_interrupt(struct rtl8168_private *tp)
         if (!tp->DASH)
                 return;
 
-        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
+        if (HW_DASH_SUPPORT_CMAC(tp))
                 RTL_CMAC_W8(tp, CMAC_IBIMR0, (ISRIMR_DASH_TYPE2_ROK | ISRIMR_DASH_TYPE2_TOK | ISRIMR_DASH_TYPE2_TDU | ISRIMR_DASH_TYPE2_RDU | ISRIMR_DASH_TYPE2_RX_DISABLE_IDLE));
-        }
 }
 
 static inline void
@@ -2460,9 +2556,8 @@ rtl8168_disable_dash2_interrupt(struct rtl8168_private *tp)
         if (!tp->DASH)
                 return;
 
-        if (HW_DASH_SUPPORT_TYPE_2(tp) || HW_DASH_SUPPORT_TYPE_3(tp)) {
+        if (HW_DASH_SUPPORT_CMAC(tp))
                 RTL_CMAC_W8(tp, CMAC_IBIMR0, 0);
-        }
 }
 #endif
 
