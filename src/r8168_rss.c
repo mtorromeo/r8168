@@ -416,7 +416,7 @@ static u32 rtl8168_get_rx_desc_hash(struct rtl8168_private *tp,
                                     struct RxDescV2 *desc)
 {
         if (!desc->RSSResult)
-                udelay(1);
+                fsleep(1);
         return le32_to_cpu(desc->RSSResult);
 }
 

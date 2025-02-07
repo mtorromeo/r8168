@@ -2,7 +2,7 @@
 /*
 ################################################################################
 #
-# r8168 is the Linux device driver released for Realtek 2.5Gigabit Ethernet
+# r8168 is the Linux device driver released for Realtek Gigabit Ethernet
 # controllers with PCI-Express interface.
 #
 # Copyright(c) 2024 Realtek Semiconductor Corp. All rights reserved.

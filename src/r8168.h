@@ -165,6 +165,18 @@ static inline void netdev_tx_completed_queue(struct netdev_queue *dev_queue,
 static inline void netdev_tx_reset_queue(struct netdev_queue *q) {}
 #endif
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0)
+static inline void fsleep(unsigned long usecs)
+{
+        if (usecs <= 10)
+                udelay(usecs);
+        else if (usecs <= 20000)
+                usleep_range(usecs, 2 * usecs);
+        else
+                msleep(DIV_ROUND_UP(usecs, 1000));
+}
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(5,8,0) */
+
 #if LINUX_VERSION_CODE < KERNEL_VERSION(5,2,0)
 #define netdev_xmit_more() (0)
 #endif
@@ -500,7 +512,7 @@ do { \
 #define RSS_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.054.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX RSS_SUFFIX
+#define RTL8168_VERSION "8.055.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX RSS_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
@@ -2170,6 +2182,7 @@ struct rtl8168_private {
         u8 DASH;
         u8 dash_printer_enabled;
         u8 HwPkgDet;
+        u8 HwSuppOcpChannelVer;
         void __iomem *cmac_ioaddr; /* cmac memory map physical address */
         DECLARE_BITMAP(dash_req_flags, R8168_DASH_REQ_FLAG_MAX);
 
