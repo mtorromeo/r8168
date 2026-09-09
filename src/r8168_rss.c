@@ -104,7 +104,7 @@ u32 rtl8168_rss_indir_tbl_entries(struct rtl8168_private *tp)
 }
 
 #define RSS_MASK_BITS_OFFSET (8)
-static int _rtl8168_set_rss_hash_opt(struct rtl8168_private *tp)
+static void _rtl8168_set_rss_hash_opt(struct rtl8168_private *tp)
 {
         u32 hash_mask_len;
         u32 rss_ctrl;
@@ -125,8 +125,6 @@ static int _rtl8168_set_rss_hash_opt(struct rtl8168_private *tp)
         rss_ctrl |= hash_mask_len << RSS_MASK_BITS_OFFSET;
 
         rtl8168_eri_write(tp, RSS_CTRL_8168, 4, rss_ctrl, ERIAR_ExGMAC);
-
-        return 0;
 }
 
 static int rtl8168_set_rss_hash_opt(struct rtl8168_private *tp,
@@ -291,11 +289,16 @@ static void rtl8168_store_rss_key(struct rtl8168_private *tp)
 {
         const u16 rss_key_reg = rtl8168_rss_key_reg(tp);
         u32 i, rss_key_size = _rtl8168_get_rxfh_key_size(tp);
-        u32 *rss_key = (u32*)tp->rss_key;
 
-        /* Write redirection table to HW */
-        for (i = 0; i < rss_key_size; i+=4)
-                rtl8168_eri_write(tp, rss_key_reg + i, 4, *rss_key++, ERIAR_ExGMAC);
+        /* Write RSS hash key to HW */
+        for (i = 0; i < rss_key_size; i += 4) {
+                u32 key_word = ((u32)tp->rss_key[i]) |
+                               ((u32)tp->rss_key[i + 1] << 8) |
+                               ((u32)tp->rss_key[i + 2] << 16) |
+                               ((u32)tp->rss_key[i + 3] << 24);
+
+                rtl8168_eri_write(tp, rss_key_reg + i, 4, key_word, ERIAR_ExGMAC);
+        }
 }
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6,8,0)

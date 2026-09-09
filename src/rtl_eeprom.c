@@ -46,10 +46,8 @@
 
 //-------------------------------------------------------------------
 //rtl8168_eeprom_type():
-//  tell the eeprom type
-//return value:
-//  0: the eeprom type is 93C46
-//  1: the eeprom type is 93C56 or 93C66
+//  Probe and set the EEPROM type in tp->eeprom_type and tp->eeprom_len.
+//  Must be called before any EEPROM read/write operations.
 //-------------------------------------------------------------------
 void rtl8168_eeprom_type(struct rtl8168_private *tp)
 {
@@ -58,12 +56,12 @@ void rtl8168_eeprom_type(struct rtl8168_private *tp)
         if (tp->mcfg == CFG_METHOD_DEFAULT)
                 goto out_no_eeprom;
 
-        if(RTL_R8(tp, 0xD2)&0x04) {
+        if (RTL_R8(tp, 0xD2) & 0x04) {
                 //not support
                 //tp->eeprom_type = EEPROM_TWSI;
                 //tp->eeprom_len = 256;
                 goto out_no_eeprom;
-        } else if(RTL_R32(tp, RxConfig) & RxCfg_9356SEL) {
+        } else if (RTL_R32(tp, RxConfig) & RxCfg_9356SEL) {
                 tp->eeprom_type = EEPROM_TYPE_93C56;
                 tp->eeprom_len = 256;
         } else {
@@ -121,15 +119,15 @@ u16 rtl8168_eeprom_read_sc(struct rtl8168_private *tp, u16 reg)
 {
         int addr_sz = 6;
         u8 x;
-        u16 data;
+        u16 data = 0;
 
-        if(tp->eeprom_type == EEPROM_TYPE_NONE) {
-                return -1;
+        if (tp->eeprom_type == EEPROM_TYPE_NONE) {
+                return 0xFFFF;
         }
 
-        if (tp->eeprom_type==EEPROM_TYPE_93C46)
+        if (tp->eeprom_type == EEPROM_TYPE_93C46)
                 addr_sz = 6;
-        else if (tp->eeprom_type==EEPROM_TYPE_93C56)
+        else if (tp->eeprom_type == EEPROM_TYPE_93C56)
                 addr_sz = 8;
 
         x = Cfg9346_EEM1 | Cfg9346_EECS;
@@ -157,13 +155,13 @@ void rtl8168_eeprom_write_sc(struct rtl8168_private *tp, u16 reg, u16 data)
         int addr_sz = 6;
         int w_dummy_addr = 4;
 
-        if(tp->eeprom_type == EEPROM_TYPE_NONE)
+        if (tp->eeprom_type == EEPROM_TYPE_NONE)
                 return;
 
-        if (tp->eeprom_type==EEPROM_TYPE_93C46) {
+        if (tp->eeprom_type == EEPROM_TYPE_93C46) {
                 addr_sz = 6;
                 w_dummy_addr = 4;
-        } else if (tp->eeprom_type==EEPROM_TYPE_93C56) {
+        } else if (tp->eeprom_type == EEPROM_TYPE_93C56) {
                 addr_sz = 8;
                 w_dummy_addr = 6;
         }
@@ -178,19 +176,20 @@ void rtl8168_eeprom_write_sc(struct rtl8168_private *tp, u16 reg, u16 data)
         rtl8168_shift_out_bits(tp, RTL_EEPROM_ERASE_OPCODE, 3);
         rtl8168_shift_out_bits(tp, reg, addr_sz);
         if (rtl8168_eeprom_cmd_done(tp) < 0)
-                return;
+                goto exit;
         rtl8168_stand_by(tp);
 
         rtl8168_shift_out_bits(tp, RTL_EEPROM_WRITE_OPCODE, 3);
         rtl8168_shift_out_bits(tp, reg, addr_sz);
         rtl8168_shift_out_bits(tp, data, 16);
         if (rtl8168_eeprom_cmd_done(tp) < 0)
-                return;
+                goto exit;
         rtl8168_stand_by(tp);
 
         rtl8168_shift_out_bits(tp, RTL_EEPROM_EWDS_OPCODE, 5);
         rtl8168_shift_out_bits(tp, reg, w_dummy_addr);
 
+exit:
         rtl8168_eeprom_cleanup(tp);
         RTL_W8(tp, Cfg9346, 0);
 }
@@ -204,7 +203,6 @@ void rtl8168_raise_clock(struct rtl8168_private *tp, u8 *x)
 
 void rtl8168_lower_clock(struct rtl8168_private *tp, u8 *x)
 {
-
         *x = *x & ~Cfg9346_EESK;
         RTL_W8(tp, Cfg9346, *x);
         fsleep(RTL_CLOCK_RATE);
@@ -213,9 +211,9 @@ void rtl8168_lower_clock(struct rtl8168_private *tp, u8 *x)
 void rtl8168_shift_out_bits(struct rtl8168_private *tp, int data, int count)
 {
         u8 x;
-        int  mask;
+        unsigned int mask;
 
-        mask = 0x01 << (count - 1);
+        mask = 0x01U << (count - 1);
         x = RTL_R8(tp, Cfg9346);
         x &= ~(Cfg9346_EEDI | Cfg9346_EEDO);
 
@@ -230,7 +228,7 @@ void rtl8168_shift_out_bits(struct rtl8168_private *tp, int data, int count)
                 rtl8168_raise_clock(tp, &x);
                 rtl8168_lower_clock(tp, &x);
                 mask = mask >> 1;
-        } while(mask);
+        } while (mask);
 
         x &= ~Cfg9346_EEDI;
         RTL_W8(tp, Cfg9346, x);
@@ -239,7 +237,8 @@ void rtl8168_shift_out_bits(struct rtl8168_private *tp, int data, int count)
 u16 rtl8168_shift_in_bits(struct rtl8168_private *tp)
 {
         u8 x;
-        u16 d, i;
+        u16 d;
+        int i;
 
         x = RTL_R8(tp, Cfg9346);
         x &= ~(Cfg9346_EEDI | Cfg9346_EEDO);

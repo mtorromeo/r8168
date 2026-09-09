@@ -139,7 +139,7 @@ static bool rtl8168_fw_data_ok(struct rtl8168_fw *rtl_fw)
                         break;
 
                 case PHY_BJMPN:
-                        if (regno > index)
+                        if (regno >= index)
                                 goto out;
                         break;
                 case PHY_READCOUNT_EQ_SKIP:

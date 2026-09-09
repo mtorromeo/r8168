@@ -55,7 +55,8 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
         ret = 0;
         switch (my_cmd.cmd) {
         case RTLTOOL_READ_MAC:
-                if ((my_cmd.offset + my_cmd.len) > R8168_REGS_SIZE) {
+                if (my_cmd.offset >= R8168_REGS_SIZE ||
+                    my_cmd.len > R8168_REGS_SIZE - my_cmd.offset) {
                         ret = -EINVAL;
                         break;
                 }
@@ -77,7 +78,8 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                 }
                 break;
         case RTLTOOL_WRITE_MAC:
-                if ((my_cmd.offset + my_cmd.len) > R8168_REGS_SIZE) {
+                if (my_cmd.offset >= R8168_REGS_SIZE ||
+                    my_cmd.len > R8168_REGS_SIZE - my_cmd.offset) {
                         ret = -EINVAL;
                         break;
                 }
@@ -172,6 +174,11 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                 }
                 break;
         case RTLTOOL_READ_EEPROM:
+                if (my_cmd.offset > 0xFFFF) {
+                        ret = -EINVAL;
+                        break;
+                }
+
                 my_cmd.data = rtl8168_eeprom_read_sc(tp, my_cmd.offset);
                 if (copy_to_user(ifr->ifr_data, &my_cmd, sizeof(my_cmd))) {
                         ret = -EFAULT;
@@ -179,9 +186,19 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                 }
                 break;
         case RTLTOOL_WRITE_EEPROM:
+                if (my_cmd.offset > 0xFFFF) {
+                        ret = -EINVAL;
+                        break;
+                }
+
                 rtl8168_eeprom_write_sc(tp, my_cmd.offset, my_cmd.data);
                 break;
-        case RTL_READ_OOB_MAC:
+        case RTLTOOL_READ_OOB_MAC:
+                if (my_cmd.offset > 0xFFFF) {
+                        ret = -EINVAL;
+                        break;
+                }
+
                 rtl8168_oob_mutex_lock(tp);
                 my_cmd.data = rtl8168_ocp_read(tp, my_cmd.offset, 4);
                 rtl8168_oob_mutex_unlock(tp);
@@ -191,25 +208,39 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                         break;
                 }
                 break;
-        case RTL_WRITE_OOB_MAC:
-                if (my_cmd.len == 0 || my_cmd.len > 4)
-                        return -EOPNOTSUPP;
+        case RTLTOOL_WRITE_OOB_MAC:
+                if (my_cmd.len == 0 || my_cmd.len > 4) {
+                        ret = -EOPNOTSUPP;
+                        break;
+                }
+
+                if (my_cmd.offset > 0xFFFF) {
+                        ret = -EINVAL;
+                        break;
+                }
 
                 rtl8168_oob_mutex_lock(tp);
                 rtl8168_ocp_write(tp, my_cmd.offset, my_cmd.len, my_cmd.data);
                 rtl8168_oob_mutex_unlock(tp);
                 break;
-        case RTL_ENABLE_PCI_DIAG:
+        case RTLTOOL_ENABLE_PCI_DIAG:
                 tp->rtk_enable_diag = 1;
                 dprintk("enable rtk diag\n");
                 break;
-        case RTL_DISABLE_PCI_DIAG:
+        case RTLTOOL_DISABLE_PCI_DIAG:
                 tp->rtk_enable_diag = 0;
                 dprintk("disable rtk diag\n");
                 break;
-        case RTL_READ_MAC_OCP:
-                if (my_cmd.offset % 2)
-                        return -EOPNOTSUPP;
+        case RTLTOOL_READ_MAC_OCP:
+                if (my_cmd.offset % 2) {
+                        ret = -EOPNOTSUPP;
+                        break;
+                }
+
+                if (my_cmd.offset > 0xFFFF) {
+                        ret = -EINVAL;
+                        break;
+                }
 
                 my_cmd.data = rtl8168_mac_ocp_read(tp, my_cmd.offset);
                 if (copy_to_user(ifr->ifr_data, &my_cmd, sizeof(my_cmd))) {
@@ -217,20 +248,27 @@ int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr)
                         break;
                 }
                 break;
-        case RTL_WRITE_MAC_OCP:
-                if ((my_cmd.offset % 2) || (my_cmd.len != 2))
-                        return -EOPNOTSUPP;
+        case RTLTOOL_WRITE_MAC_OCP:
+                if ((my_cmd.offset % 2) || (my_cmd.len != 2)) {
+                        ret = -EOPNOTSUPP;
+                        break;
+                }
+
+                if (my_cmd.offset > 0xFFFF) {
+                        ret = -EINVAL;
+                        break;
+                }
 
                 rtl8168_mac_ocp_write(tp, my_cmd.offset, (u16)my_cmd.data);
                 break;
-        case RTL_DIRECT_READ_PHY_OCP:
+        case RTLTOOL_DIRECT_READ_PHY_OCP:
                 my_cmd.data = rtl8168_mdio_prot_direct_read_phy_ocp(tp, my_cmd.offset);
                 if (copy_to_user(ifr->ifr_data, &my_cmd, sizeof(my_cmd))) {
                         ret = -EFAULT;
                         break;
                 }
                 break;
-        case RTL_DIRECT_WRITE_PHY_OCP:
+        case RTLTOOL_DIRECT_WRITE_PHY_OCP:
                 rtl8168_mdio_prot_direct_write_phy_ocp(tp, my_cmd.offset, my_cmd.data);
                 break;
         default:

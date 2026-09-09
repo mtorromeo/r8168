@@ -32,8 +32,8 @@
  *  US6,570,884, US6,115,776, and US6,327,625.
  ***********************************************************************************/
 
-#ifndef _LINUX_RTL8168_RSS_H
-#define _LINUX_RTL8168_RSS_H
+#ifndef RTL8168_RSS_H
+#define RTL8168_RSS_H
 
 #include <linux/netdevice.h>
 #include <linux/types.h>
@@ -69,4 +69,4 @@ void rtl8168_init_rss(struct rtl8168_private *tp);
 u32 rtl8168_rss_indir_tbl_entries(struct rtl8168_private *tp);
 void rtl8168_disable_rss(struct rtl8168_private *tp);
 
-#endif /* _LINUX_RTL8168_RSS_H */
+#endif /* RTL8168_RSS_H */

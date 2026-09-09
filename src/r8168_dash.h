@@ -32,10 +32,10 @@
  *  US6,570,884, US6,115,776, and US6,327,625.
  ***********************************************************************************/
 
-#ifndef _LINUX_R8168_DASH_H
-#define _LINUX_R8168_DASH_H
+#ifndef R8168_DASH_H
+#define R8168_DASH_H
 
-#define SIOCDEVPRIVATE_RTLDASH   SIOCDEVPRIVATE+2
+#define SIOCDEVPRIVATE_RTLDASH   (SIOCDEVPRIVATE+2)
 
 enum rtl_dash_cmd {
         RTL_DASH_ARP_NS_OFFLOAD = 0,
@@ -60,7 +60,7 @@ enum rtl_dash_cmd {
         RTL_FW_GET_WAKEUP_PATTERN,
         RTL_FW_DEL_WAKEUP_PATTERN,
 
-        RTLT_DASH_COMMAND_INVALID,
+        RTL_DASH_COMMAND_INVALID,
 };
 
 struct rtl_dash_ip_mac {
@@ -75,7 +75,7 @@ struct rtl_dash_ioctl_struct {
         __u32	len;
         union {
                 __u32	data;
-                void *data_buffer;
+                void __user *data_buffer;
         };
 };
 
@@ -120,7 +120,7 @@ typedef struct _RX_DASH_FROM_FW_DESC {
         __le32 resv;
         __le64 BufferAddress;
 }
-RX_DASH_FROM_FW_DESC, *PRX_DASH_FROM_FW_DESC;
+__packed RX_DASH_FROM_FW_DESC, *PRX_DASH_FROM_FW_DESC;
 
 typedef struct _TX_DASH_SEND_FW_DESC {
         __le16 length;
@@ -128,7 +128,7 @@ typedef struct _TX_DASH_SEND_FW_DESC {
         __le32 resv;
         __le64 BufferAddress;
 }
-TX_DASH_SEND_FW_DESC, *PTX_DASH_SEND_FW_DESC;
+__packed TX_DASH_SEND_FW_DESC, *PTX_DASH_SEND_FW_DESC;
 
 typedef struct _OSOOBHdr {
         __le32 len;
@@ -137,13 +137,13 @@ typedef struct _OSOOBHdr {
         u8 hostReqV;
         u8 res;
 }
-OSOOBHdr, *POSOOBHdr;
+__packed OSOOBHdr, *POSOOBHdr;
 
 typedef struct _RX_DASH_BUFFER_TYPE_2 {
         OSOOBHdr oobhdr;
-        u8 RxDataBuffer[0];
+        u8 RxDataBuffer[];
 }
-RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
+__packed RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 
 #define ALIGN_8                 (0x7)
 #define ALIGN_16                (0xf)
@@ -161,7 +161,6 @@ RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 #define OCP_REG_DMEMSTA (0x38)
 #define OCP_REG_GPHYAR (0x60)
 #define OCP_REG_FIRMWARE_MAJOR_VERSION (0x120)
-
 
 #define OCP_REG_CONFIG0_DASHEN           BIT_15
 #define OCP_REG_CONFIG0_OOBRESET         BIT_14
@@ -206,7 +205,7 @@ RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 #define SystemSlaveDescStartAddrLow (0xF8)
 #define SystemSlaveDescStartAddrHigh (0xFC)
 
-//DASH Request Type
+/* DASH Request Type */
 #define WSMANREG 0x01
 #define OSPUSHDATA 0x02
 
@@ -239,16 +238,16 @@ RX_DASH_BUFFER_TYPE_2, *PRX_DASH_BUFFER_TYPE_2;
 #define RTL8168FP_CMAC_IOBASE 0xBAF20000
 #define RTL8168FP_KVM_BASE 0xBAF80400
 #define CMAC_SYNC_REG 0x20
-#define CMAC_RXDESC_OFFSET 0x90    //RX: 0x90 - 0x98
-#define CMAC_TXDESC_OFFSET 0x98    //TX: 0x98 - 0x9F
+#define CMAC_RXDESC_OFFSET 0x90    /* RX: 0x90 - 0x98 */
+#define CMAC_TXDESC_OFFSET 0x98    /* TX: 0x98 - 0x9F */
 
 /* cmac write/read MMIO register */
-#define RTL_CMAC_W8(tp, reg, val8)   writeb ((val8), tp->cmac_ioaddr + (reg))
-#define RTL_CMAC_W16(tp, reg, val16) writew ((val16), tp->cmac_ioaddr + (reg))
-#define RTL_CMAC_W32(tp, reg, val32) writel ((val32), tp->cmac_ioaddr + (reg))
-#define RTL_CMAC_R8(tp, reg)     readb (tp->cmac_ioaddr + (reg))
-#define RTL_CMAC_R16(tp, reg)        readw (tp->cmac_ioaddr + (reg))
-#define RTL_CMAC_R32(tp, reg)        ((unsigned long) readl (tp->cmac_ioaddr + (reg)))
+#define RTL_CMAC_W8(tp, reg, val8)   writeb ((val8), (tp)->cmac_ioaddr + (reg))
+#define RTL_CMAC_W16(tp, reg, val16) writew ((val16), (tp)->cmac_ioaddr + (reg))
+#define RTL_CMAC_W32(tp, reg, val32) writel ((val32), (tp)->cmac_ioaddr + (reg))
+#define RTL_CMAC_R8(tp, reg)     readb ((tp)->cmac_ioaddr + (reg))
+#define RTL_CMAC_R16(tp, reg)        readw ((tp)->cmac_ioaddr + (reg))
+#define RTL_CMAC_R32(tp, reg)        readl ((tp)->cmac_ioaddr + (reg))
 
 int rtl8168_dash_ioctl(struct net_device *dev, struct ifreq *ifr);
 bool CheckDashInterrupt(struct net_device *dev, u16 status);
@@ -256,6 +255,4 @@ void HandleDashInterrupt(struct net_device *dev);
 int AllocateDashShareMemory(struct net_device *dev);
 void FreeAllocatedDashShareMemory(struct net_device *dev);
 void DashHwInit(struct net_device *dev);
-
-
-#endif /* _LINUX_R8168_DASH_H */
+#endif /* R8168_DASH_H */
