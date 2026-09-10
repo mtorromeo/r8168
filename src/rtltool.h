@@ -32,13 +32,15 @@
  *  US6,570,884, US6,115,776, and US6,327,625.
  ***********************************************************************************/
 
-#ifndef _LINUX_RTLTOOL_H
-#define _LINUX_RTLTOOL_H
+#ifndef RTLTOOL_H
+#define RTLTOOL_H
 
-#define SIOCRTLTOOL		SIOCDEVPRIVATE+1
+#include <linux/types.h>
+
+#define SIOCRTLTOOL		(SIOCDEVPRIVATE + 1)
 
 enum rtl_cmd {
-        RTLTOOL_READ_MAC=0,
+        RTLTOOL_READ_MAC = 0,
         RTLTOOL_WRITE_MAC,
         RTLTOOL_READ_PHY,
         RTLTOOL_WRITE_PHY,
@@ -51,17 +53,17 @@ enum rtl_cmd {
         RTLTOOL_READ_EEPROM,
         RTLTOOL_WRITE_EEPROM,
 
-        RTL_READ_OOB_MAC,
-        RTL_WRITE_OOB_MAC,
+        RTLTOOL_READ_OOB_MAC,
+        RTLTOOL_WRITE_OOB_MAC,
 
-        RTL_ENABLE_PCI_DIAG,
-        RTL_DISABLE_PCI_DIAG,
+        RTLTOOL_ENABLE_PCI_DIAG,
+        RTLTOOL_DISABLE_PCI_DIAG,
 
-        RTL_READ_MAC_OCP,
-        RTL_WRITE_MAC_OCP,
+        RTLTOOL_READ_MAC_OCP,
+        RTLTOOL_WRITE_MAC_OCP,
 
-        RTL_DIRECT_READ_PHY_OCP,
-        RTL_DIRECT_WRITE_PHY_OCP,
+        RTLTOOL_DIRECT_READ_PHY_OCP,
+        RTLTOOL_DIRECT_WRITE_PHY_OCP,
 
         RTLTOOL_INVALID
 };
@@ -73,14 +75,8 @@ struct rtltool_cmd {
         __u32	data;
 };
 
-enum mode_access {
-        MODE_NONE=0,
-        MODE_READ,
-        MODE_WRITE
-};
-
 #ifdef __KERNEL__
 int rtl8168_tool_ioctl(struct rtl8168_private *tp, struct ifreq *ifr);
 #endif
 
-#endif /* _LINUX_RTLTOOL_H */
+#endif /* RTLTOOL_H */

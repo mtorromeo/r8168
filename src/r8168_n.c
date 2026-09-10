@@ -479,12 +479,12 @@ static int disable_wol_support = 1;
 static int disable_wol_support = 0;
 #endif
 #ifdef ENABLE_GIGA_LITE
-static int eee_giga_lite = 1;
+static int enable_giga_lite = 1;
 #else
-static int eee_giga_lite = 0;
+static int enable_giga_lite = 0;
 #endif
 
-MODULE_AUTHOR("Realtek and the Linux r8168 crew <netdev@vger.kernel.org>");
+MODULE_AUTHOR("Realtek and the Linux r8169 crew <netdev@vger.kernel.org>");
 MODULE_DESCRIPTION("RealTek RTL-8168 Gigabit Ethernet driver");
 
 module_param(speed_mode, uint, 0);
@@ -503,7 +503,7 @@ module_param(aspm, int, 0);
 MODULE_PARM_DESC(aspm, "Enable ASPM.");
 
 module_param(dynamic_aspm, int, 0);
-MODULE_PARM_DESC(aspm, "Enable Software Dynamic ASPM.");
+MODULE_PARM_DESC(dynamic_aspm, "Enable Software Dynamic ASPM.");
 
 module_param(s5wol, int, 0);
 MODULE_PARM_DESC(s5wol, "Enable Shutdown Wake On Lan.");
@@ -532,13 +532,33 @@ MODULE_PARM_DESC(dynamic_aspm_packet_threshold, "Dynamic ASPM packet threshold."
 module_param(disable_wol_support, int, 0);
 MODULE_PARM_DESC(disable_wol_support, "Disable PM support.");
 
-module_param(eee_giga_lite, int, 0);
-MODULE_PARM_DESC(eee_giga_lite, "Enable Giga Lite.");
+module_param(enable_giga_lite, int, 0);
+MODULE_PARM_DESC(enable_giga_lite, "Enable Giga Lite.");
 
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
 module_param_named(debug, debug.msg_enable, int, 0);
 MODULE_PARM_DESC(debug, "Debug verbosity level (0=none, ..., 16=all)");
 #endif//LINUX_VERSION_CODE > KERNEL_VERSION(2,6,0)
+
+static void rtl8168_init_module_params(struct rtl8168_private *tp)
+{
+        tp->use_dac = use_dac;
+        tp->timer_count = timer_count;
+        tp->dynamic_aspm_packet_threshold = dynamic_aspm_packet_threshold;
+        tp->speed_mode = speed_mode;
+        tp->duplex_mode = duplex_mode;
+        tp->autoneg_mode = autoneg_mode;
+        tp->advertising_mode = advertising_mode;
+        tp->aspm = aspm;
+        tp->dynamic_aspm = dynamic_aspm;
+        tp->s5wol = s5wol;
+        tp->s5_keep_curr_mac = s5_keep_curr_mac;
+        tp->s0_magic_packet = s0_magic_packet;
+        tp->disable_wol_support = disable_wol_support;
+        tp->enable_giga_lite = enable_giga_lite;
+        tp->hwoptimize = hwoptimize;
+        tp->eee.eee_enabled = eee_enable;
+}
 
 MODULE_LICENSE("GPL");
 #ifdef ENABLE_USE_FIRMWARE_FILE
@@ -1003,7 +1023,7 @@ rtl8168_sysfs_testmode_on(struct rtl8168_private *tp)
 #endif
 }
 
-static u32 rtl8168_convert_link_speed(u16 status)
+static u32 rtl8168_convert_link_speed(struct rtl8168_private *tp, u16 status)
 {
         u32 speed = SPEED_UNKNOWN;
 
@@ -1015,7 +1035,7 @@ static u32 rtl8168_convert_link_speed(u16 status)
                 else if (status & _10bps)
                         speed = SPEED_10;
                 else {
-                        if (eee_giga_lite)
+                        if (tp->enable_giga_lite)
                                 speed = SPEED_1000;
                 }
         }
@@ -1295,19 +1315,19 @@ static int proc_get_driver_variable(struct seq_file *m, void *v)
         seq_printf(m, "DASH\t0x%x\n", tp->DASH);
         seq_printf(m, "dash_printer_enabled\t0x%x\n", tp->dash_printer_enabled);
         seq_printf(m, "HwSuppKCPOffloadVer\t0x%x\n", tp->HwSuppKCPOffloadVer);
-        seq_printf(m, "speed_mode\t0x%x\n", speed_mode);
-        seq_printf(m, "duplex_mode\t0x%x\n", duplex_mode);
-        seq_printf(m, "autoneg_mode\t0x%x\n", autoneg_mode);
-        seq_printf(m, "advertising_mode\t0x%x\n", advertising_mode);
-        seq_printf(m, "aspm\t0x%x\n", aspm);
-        seq_printf(m, "s5wol\t0x%x\n", s5wol);
-        seq_printf(m, "s5_keep_curr_mac\t0x%x\n", s5_keep_curr_mac);
+        seq_printf(m, "speed_mode\t0x%x\n", tp->speed_mode);
+        seq_printf(m, "duplex_mode\t0x%x\n", tp->duplex_mode);
+        seq_printf(m, "autoneg_mode\t0x%x\n", tp->autoneg_mode);
+        seq_printf(m, "advertising_mode\t0x%x\n", tp->advertising_mode);
+        seq_printf(m, "aspm\t0x%x\n", tp->aspm);
+        seq_printf(m, "s5wol\t0x%x\n", tp->s5wol);
+        seq_printf(m, "s5_keep_curr_mac\t0x%x\n", tp->s5_keep_curr_mac);
         seq_printf(m, "eee_enable\t0x%x\n", tp->eee.eee_enabled);
-        seq_printf(m, "hwoptimize\t0x%lx\n", hwoptimize);
+        seq_printf(m, "hwoptimize\t0x%lx\n", tp->hwoptimize);
         seq_printf(m, "proc_init_num\t0x%x\n", proc_init_num);
-        seq_printf(m, "s0_magic_packet\t0x%x\n", s0_magic_packet);
-        seq_printf(m, "disable_wol_support\t0x%x\n", disable_wol_support);
-        seq_printf(m, "eee_giga_lite\t0x%x\n", eee_giga_lite);
+        seq_printf(m, "s0_magic_packet\t0x%x\n", tp->s0_magic_packet);
+        seq_printf(m, "disable_wol_support\t0x%x\n", tp->disable_wol_support);
+        seq_printf(m, "enable_giga_lite\t0x%x\n", tp->enable_giga_lite);
         seq_printf(m, "HwSuppMagicPktVer\t0x%x\n", tp->HwSuppMagicPktVer);
         seq_printf(m, "HwSuppUpsVer\t0x%x\n", tp->HwSuppUpsVer);
         seq_printf(m, "HwSuppEsdVer\t0x%x\n", tp->HwSuppEsdVer);
@@ -1576,7 +1596,7 @@ static int _proc_get_cable_info(struct seq_file *m, void *v, bool poe_mode)
         status = RTL_R8(tp, PHYstatus);
         if (status & LinkStatus)
                 seq_printf(m, "\nlink speed:%d",
-                           rtl8168_convert_link_speed(status));
+                           rtl8168_convert_link_speed(tp, status));
         else
                 seq_puts(m, "\nlink status:off");
 
@@ -1879,7 +1899,7 @@ static int proc_get_driver_variable(char *page, char **start,
                         "tdu0\t0x%x\n"
                         "cur_tx1\t0x%x\n"
                         "dirty_tx1\t0x%x\n"
-                        "tdu0\t1x%x\n"
+                        "tdu1\t0x%x\n"
                         "rx_buf_sz\t0x%x\n"
                         "esd_flag\t0x%x\n"
                         "pci_cfg_is_read\t0x%x\n"
@@ -1941,7 +1961,7 @@ static int proc_get_driver_variable(char *page, char **start,
                         "proc_init_num\t0x%x\n"
                         "s0_magic_packet\t0x%x\n"
                         "disable_wol_support\t0x%x\n"
-                        "eee_giga_lite\t0x%x\n"
+                        "enable_giga_lite\t0x%x\n"
                         "HwSuppMagicPktVer\t0x%x\n"
                         "HwSuppUpsVer\t0x%x\n"
                         "HwSuppEsdVer\t0x%x\n"
@@ -2043,19 +2063,19 @@ static int proc_get_driver_variable(char *page, char **start,
                         tp->DASH,
                         tp->dash_printer_enabled,
                         tp->HwSuppKCPOffloadVer,
-                        speed_mode,
-                        duplex_mode,
-                        autoneg_mode,
-                        advertising_mode,
-                        aspm,
-                        s5wol,
-                        s5_keep_curr_mac,
+                        tp->speed_mode,
+                        tp->duplex_mode,
+                        tp->autoneg_mode,
+                        tp->advertising_mode,
+                        tp->aspm,
+                        tp->s5wol,
+                        tp->s5_keep_curr_mac,
                         tp->eee.eee_enabled,
-                        hwoptimize,
+                        tp->hwoptimize,
                         proc_init_num,
-                        s0_magic_packet,
-                        disable_wol_support,
-                        eee_giga_lite,
+                        tp->s0_magic_packet,
+                        tp->disable_wol_support,
+                        tp->enable_giga_lite,
                         tp->HwSuppMagicPktVer,
                         tp->HwSuppUpsVer,
                         tp->HwSuppEsdVer,
@@ -2120,19 +2140,19 @@ static int proc_get_tally_counter(char *page, char **start,
                         "Statistics\tValue\n----------\t-----\n");
 
         len += snprintf(page + len, count - len,
-                        "tx_packets\t%lld\n"
-                        "rx_packets\t%lld\n"
-                        "tx_errors\t%lld\n"
-                        "rx_errors\t%d\n"
-                        "rx_missed\t%d\n"
-                        "align_errors\t%d\n"
-                        "tx_one_collision\t%d\n"
-                        "tx_multi_collision\t%d\n"
-                        "rx_unicast\t%lld\n"
-                        "rx_broadcast\t%lld\n"
-                        "rx_multicast\t%d\n"
-                        "tx_aborted\t%d\n"
-                        "tx_underrun\t%d\n",
+                        "tx_packets\t%llu\n"
+                        "rx_packets\t%llu\n"
+                        "tx_errors\t%llu\n"
+                        "rx_errors\t%u\n"
+                        "rx_missed\t%u\n"
+                        "align_errors\t%u\n"
+                        "tx_one_collision\t%u\n"
+                        "tx_multi_collision\t%u\n"
+                        "rx_unicast\t%llu\n"
+                        "rx_broadcast\t%llu\n"
+                        "rx_multicast\t%u\n"
+                        "tx_aborted\t%u\n"
+                        "tx_underrun\t%u\n",
                         le64_to_cpu(counters->tx_packets),
                         le64_to_cpu(counters->rx_packets),
                         le64_to_cpu(counters->tx_errors),
@@ -2402,7 +2422,7 @@ static int _proc_get_cable_info(char *page, char **start,
         if (status & LinkStatus)
                 len += snprintf(page + len, count - len,
                                 "\nlink speed:%d",
-                                rtl8168_convert_link_speed(status));
+                                rtl8168_convert_link_speed(tp, status));
         else
                 len += snprintf(page + len, count - len,
                                 "\nlink status:off");
@@ -4801,8 +4821,8 @@ static inline void
 rtl8168_switch_to_timer_interrupt(struct rtl8168_private *tp)
 {
         if (tp->use_timer_interrrupt) {
-                RTL_W32(tp, TimeInt0, timer_count);
-                RTL_W32(tp, TCTR, timer_count);
+                RTL_W32(tp, TimeInt0, tp->timer_count);
+                RTL_W32(tp, TCTR, tp->timer_count);
                 RTL_W16(tp, tp->imr_reg[0], tp->timer_intr_mask);
 
 #ifdef ENABLE_DASH_SUPPORT
@@ -5064,14 +5084,16 @@ static void rtl8168_mac_loopback_test(struct rtl8168_private *tp)
         tmpAddr = skb_put(skb, len - 14);
 
         mapping = dma_map_single(tp_to_dev(tp), skb->data, len, DMA_TO_DEVICE);
-        dma_sync_single_for_cpu(tp_to_dev(tp), le64_to_cpu(mapping),
-                                len, DMA_TO_DEVICE);
+        if (dma_mapping_error(tp_to_dev(tp), mapping)) {
+                dev_kfree_skb(skb);
+                return;
+        }
         txd->addr = cpu_to_le64(mapping);
         txd->opts2 = 0;
         while (1) {
                 memset(tmpAddr, pattern++, len - 14);
                 dma_sync_single_for_device(&tp->pci_dev->dev,
-                                           le64_to_cpu(mapping),
+                                           mapping,
                                            len, DMA_TO_DEVICE);
                 txd->opts1 = cpu_to_le32(DescOwn | FirstFrag | LastFrag | len);
 
@@ -5092,8 +5114,6 @@ static void rtl8168_mac_loopback_test(struct rtl8168_private *tp)
                 rx_len = rx_cmd & 0x3FFF;
                 rx_len -= 4;
                 rxd->opts1 = cpu_to_le32(DescOwn | tp->rx_buf_sz);
-
-                dma_sync_single_for_cpu(tp_to_dev(tp), le64_to_cpu(mapping), len, DMA_TO_DEVICE);
 
                 if (rx_len == len) {
                         dma_sync_single_for_cpu(tp_to_dev(tp), le64_to_cpu(rxd->addr), tp->rx_buf_sz, DMA_FROM_DEVICE);
@@ -5350,7 +5370,7 @@ rtl8168_hw_aspm_clkreq_enable(struct rtl8168_private *tp, bool enable)
         if (!tp->HwSuppAspmClkIntrLock)
                 return;
 
-        if (enable && aspm) {
+        if (enable && tp->aspm) {
                 RTL_W8(tp, Config5, RTL_R8(tp, Config5) | ASPM_en);
                 RTL_W8(tp, Config2, RTL_R8(tp, Config2) | ClkReqEn);
         } else {
@@ -5497,7 +5517,7 @@ rtl8168_link_down_patch(struct net_device *dev)
 
         rtl8168_init_ring(dev);
 
-        if (dynamic_aspm) {
+        if (tp->dynamic_aspm) {
                 rtl8168_enable_cfg9346_write(tp);
                 rtl8168_hw_aspm_clkreq_enable(tp, true);
                 rtl8168_disable_cfg9346_write(tp);
@@ -5578,9 +5598,9 @@ rtl8168_check_link_status(struct net_device *dev)
                         break;
                 }
         } else {
-                if (dynamic_aspm) {
+                if (tp->dynamic_aspm) {
                         bool enable_hw_aspm_clkreq = true;
-                        if (tp->dynamic_aspm_packet_count > dynamic_aspm_packet_threshold)
+                        if (tp->dynamic_aspm_packet_count > tp->dynamic_aspm_packet_threshold)
                                 enable_hw_aspm_clkreq = false;
 
                         rtl8168_enable_cfg9346_write(tp);
@@ -5592,33 +5612,30 @@ rtl8168_check_link_status(struct net_device *dev)
 }
 
 static void
-rtl8168_link_option(u8 *aut,
-                    u32 *spd,
-                    u8 *dup,
-                    u32 *adv)
+rtl8168_link_option(struct rtl8168_private *tp)
 {
-        if ((*spd != SPEED_1000) && (*spd != SPEED_100) && (*spd != SPEED_10))
-                *spd = SPEED_1000;
+        if ((tp->speed_mode != SPEED_1000) && (tp->speed_mode != SPEED_100) && (tp->speed_mode != SPEED_10))
+                tp->speed_mode = SPEED_1000;
 
-        if ((*dup != DUPLEX_FULL) && (*dup != DUPLEX_HALF))
-                *dup = DUPLEX_FULL;
+        if ((tp->duplex_mode != DUPLEX_FULL) && (tp->duplex_mode != DUPLEX_HALF))
+                tp->duplex_mode = DUPLEX_FULL;
 
-        if ((*aut != AUTONEG_ENABLE) && (*aut != AUTONEG_DISABLE))
-                *aut = AUTONEG_ENABLE;
+        if ((tp->autoneg_mode != AUTONEG_ENABLE) && (tp->autoneg_mode != AUTONEG_DISABLE))
+                tp->autoneg_mode = AUTONEG_ENABLE;
 
-        *adv &= (ADVERTISED_10baseT_Half |
-                 ADVERTISED_10baseT_Full |
-                 ADVERTISED_100baseT_Half |
-                 ADVERTISED_100baseT_Full |
-                 ADVERTISED_1000baseT_Half |
-                 ADVERTISED_1000baseT_Full);
-        if (*adv == 0)
-                *adv = (ADVERTISED_10baseT_Half |
-                        ADVERTISED_10baseT_Full |
-                        ADVERTISED_100baseT_Half |
-                        ADVERTISED_100baseT_Full |
-                        ADVERTISED_1000baseT_Half |
-                        ADVERTISED_1000baseT_Full);
+        tp->advertising_mode &= (ADVERTISED_10baseT_Half |
+                                 ADVERTISED_10baseT_Full |
+                                 ADVERTISED_100baseT_Half |
+                                 ADVERTISED_100baseT_Full |
+                                 ADVERTISED_1000baseT_Half |
+                                 ADVERTISED_1000baseT_Full);
+        if (tp->advertising_mode == 0)
+                tp->advertising_mode = (ADVERTISED_10baseT_Half |
+                                        ADVERTISED_10baseT_Full |
+                                        ADVERTISED_100baseT_Half |
+                                        ADVERTISED_100baseT_Full |
+                                        ADVERTISED_1000baseT_Half |
+                                        ADVERTISED_1000baseT_Full);
 }
 
 static void
@@ -6233,7 +6250,7 @@ rtl8168_get_hw_wol(struct net_device *dev)
         u8 options;
         u32 csi_tmp;
 
-        if (disable_wol_support)
+        if (tp->disable_wol_support)
                 goto out;
 
         tp->wol_opts = 0;
@@ -6643,7 +6660,7 @@ rtl8168_get_wol(struct net_device *dev,
 
         wol->wolopts = wol->supported = 0;
 
-        if (disable_wol_support)
+        if (tp->disable_wol_support)
                 return;
 
         wol->supported = WAKE_ANY;
@@ -6661,7 +6678,7 @@ rtl8168_set_wol(struct net_device *dev,
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        if (disable_wol_support)
+        if (tp->disable_wol_support)
                 return -EOPNOTSUPP;
 
         tp->wol_opts = wol->wolopts;
@@ -6728,7 +6745,7 @@ rtl8168_set_speed_xmii(struct net_device *dev,
                 duplex = DUPLEX_FULL;
         }
 
-        if (eee_giga_lite && (autoneg == AUTONEG_ENABLE))
+        if (tp->enable_giga_lite && (autoneg == AUTONEG_ENABLE))
                 rtl8168_enable_giga_lite(tp, adv);
         else
                 rtl8168_disable_giga_lite(tp);
@@ -7173,7 +7190,7 @@ static void rtl8168_gset_xmii(struct net_device *dev,
 
         if (report_lpa) {
                 /*link on*/
-                speed = rtl8168_convert_link_speed(status);
+                speed = rtl8168_convert_link_speed(tp, status);
 
                 if (status & TxFlowCtrl)
                         advertising |= ADVERTISED_Asym_Pause;
@@ -7413,8 +7430,8 @@ static void rtl8168_get_ringparam(struct net_device *dev,
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        ring->rx_max_pending = MAX_NUM_TX_DESC;
-        ring->tx_max_pending = MAX_NUM_RX_DESC;
+        ring->rx_max_pending = MAX_NUM_RX_DESC;
+        ring->tx_max_pending = MAX_NUM_TX_DESC;
         ring->rx_pending = tp->num_rx_desc;
         ring->tx_pending = tp->tx_ring[0].num_tx_desc;
 }
@@ -8851,7 +8868,9 @@ rtl8168_wait_phy_state_ready(struct rtl8168_private *tp, u16 PhyState,
         if (HW_SUPPORT_UPS_MODE(tp) == FALSE)
                 goto exit;
 
-        WaitCount =  max(usec / 1000, 100);
+        WaitCount =  usec / 1000;
+        if (WaitCount < 100)
+                WaitCount = 100;
 
         do {
                 TmpPhyState = rtl8168_get_phy_state(tp);
@@ -10878,7 +10897,7 @@ rtl8168_hw_init(struct net_device *dev)
 
         rtl8168_set_pci_pme(tp, 0);
 
-        if (s0_magic_packet == 1)
+        if (tp->s0_magic_packet == 1)
                 rtl8168_enable_magic_packet(dev);
         else
                 rtl8168_disable_magic_packet(dev);
@@ -24677,7 +24696,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_mdio_write(tp, 0x0B, 0x09D7);
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1f, 0x0000);
                                 rtl8168_mdio_write(tp, 0x15, 0x1006);
@@ -24965,7 +24984,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_mdio_write(tp, 0x06, rtl8168_mdio_read(tp, 0x06) & ~BIT_8);
                 rtl8168_mdio_write(tp, 0x1f, 0x0000);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1f, 0x0000);
                                 gphy_val = rtl8168_mdio_read(tp, 0x15);
@@ -25060,7 +25079,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                         rtl8168_mdio_write(tp, 0x1f, 0x0000);
                 }
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1f, 0x0000);
                                 gphy_val = rtl8168_mdio_read(tp, 0x15);
@@ -25126,7 +25145,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                         rtl8168_mdio_write(tp, 0x1f, 0x0000);
                 }
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1f, 0x0000);
                                 gphy_val = rtl8168_mdio_read(tp, 0x15);
@@ -25218,7 +25237,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                         rtl8168_mdio_write(tp, 0x1f, 0x0000);
                 }
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1f, 0x0000);
                                 gphy_val = rtl8168_mdio_read(tp, 0x15);
@@ -25280,7 +25299,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_mdio_write(tp, 0x13, 0x8088);
                 rtl8168_mdio_write(tp, 0x14, 0x9222);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_mdio_write(tp, 0x10, rtl8168_mdio_read(tp, 0x10) | BIT_2);
@@ -25323,7 +25342,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                                      BIT_14);
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_mdio_write(tp, 0x10, rtl8168_mdio_read(tp, 0x10) | BIT_2);
@@ -25351,7 +25370,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 gphy_val &= ~BIT_13;
                 rtl8168_mdio_write(tp, 0x11, gphy_val);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_mdio_write(tp, 0x10, rtl8168_mdio_read(tp, 0x10) | BIT_2);
@@ -25423,7 +25442,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_mdio_write(tp, 0x13, 0x80D7);
                 rtl8168_mdio_write(tp, 0x14, (rtl8168_mdio_read(tp, 0x14) & ~0xFF00) | 0x8400);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_mdio_write(tp, 0x10, rtl8168_mdio_read(tp, 0x10) | BIT_2);
@@ -25495,7 +25514,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_mdio_write(tp, 0x13, 0x80D7);
                 rtl8168_mdio_write(tp, 0x14, (rtl8168_mdio_read(tp, 0x14) & ~0xFF00) | 0x8400);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_mdio_write(tp, 0x10, rtl8168_mdio_read(tp, 0x10) | BIT_2);
@@ -25645,7 +25664,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_clear_eth_phy_bit(tp, 0x14, (BIT_13 | BIT_12));
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_set_eth_phy_bit(tp, 0x10, BIT_2);
@@ -25731,7 +25750,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
 
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_set_eth_phy_bit(tp, 0x10, BIT_2);
@@ -25864,7 +25883,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_set_eth_phy_bit(tp, 0x14, BIT_10);
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (!HW_SUPP_SERDES_PHY(tp) &&
                             HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
@@ -25988,7 +26007,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                                      0x7C00);
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_set_eth_phy_bit(tp, 0x10, BIT_2);
@@ -26006,7 +26025,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
                 rtl8168_mdio_write(tp, 0x1F, 0x0000);
 
 
-                if (aspm) {
+                if (tp->aspm) {
                         if (HW_HAS_WRITE_PHY_MCU_RAM_CODE(tp)) {
                                 rtl8168_mdio_write(tp, 0x1F, 0x0A43);
                                 rtl8168_set_eth_phy_bit(tp, 0x10, BIT_2);
@@ -26053,7 +26072,7 @@ rtl8168_hw_phy_config(struct net_device *dev)
             tp->mcfg == CFG_METHOD_33 || tp->mcfg == CFG_METHOD_34 ||
             tp->mcfg == CFG_METHOD_35 || tp->mcfg == CFG_METHOD_36 ||
             tp->mcfg == CFG_METHOD_37) {
-                if (aspm)
+                if (tp->aspm)
                         rtl8168_enable_ocp_phy_power_saving(dev);
         }
 
@@ -26243,8 +26262,10 @@ rtl8168_init_software_variable(struct net_device *dev)
         tp->ring_lib_enabled = 1;
 #endif
 
-        if (tp->mcfg == CFG_METHOD_DEFAULT)
-                disable_wol_support = 1;
+        if (tp->mcfg == CFG_METHOD_DEFAULT) {
+                tp->disable_wol_support = 1;
+                tp->eee.eee_enabled = 0;
+        }
 
         switch (tp->mcfg) {
         case CFG_METHOD_11:
@@ -26301,7 +26322,7 @@ rtl8168_init_software_variable(struct net_device *dev)
         }
 
         if (HW_SUPP_SERDES_PHY(tp))
-                eee_enable = 0;
+                tp->eee.eee_enabled = 0;
 
         switch (tp->mcfg) {
         case CFG_METHOD_21:
@@ -26404,8 +26425,8 @@ rtl8168_init_software_variable(struct net_device *dev)
                 break;
         }
 
-        if (!aspm || !tp->HwSuppAspmClkIntrLock)
-                dynamic_aspm = 0;
+        if (!tp->aspm || !tp->HwSuppAspmClkIntrLock)
+                tp->dynamic_aspm = 0;
 
 #ifdef ENABLE_REALWOW_SUPPORT
         rtl8168_get_realwow_hw_version(dev);
@@ -26459,7 +26480,7 @@ err1:
                         }
                 }
 
-                eee_enable = 0;
+                tp->eee.eee_enabled = 0;
         }
 
 #ifdef ENABLE_DASH_SUPPORT
@@ -26504,7 +26525,7 @@ err1:
                 }
         }
 #endif
-        if (aspm) {
+        if (tp->aspm) {
                 switch (tp->mcfg) {
                 case CFG_METHOD_21:
                 case CFG_METHOD_22:
@@ -26593,7 +26614,7 @@ err1:
                 break;
         }
 
-        if (timer_count == 0 || tp->mcfg == CFG_METHOD_DEFAULT ||
+        if (tp->timer_count == 0 || tp->mcfg == CFG_METHOD_DEFAULT ||
             (tp->features & RTL_FEATURE_MSIX))
                 tp->use_timer_interrrupt = FALSE;
 
@@ -26689,7 +26710,7 @@ err1:
                 if (pdev->subsystem_device == 0xc098 ||
                     pdev->subsystem_device == 0xc0b1 ||
                     pdev->subsystem_device == 0xc0b8)
-                        hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
+                        tp->hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
         }
 
         switch (tp->mcfg) {
@@ -26697,16 +26718,16 @@ err1:
         case CFG_METHOD_19:
                 if (pdev->subsystem_vendor == 0x13fe) {
                         if (pdev->subsystem_device == 0x00ec)
-                                hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
+                                tp->hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
                 }
                 break;
         }
 
 #ifdef CONFIG_CTAP_SHORT_OFF
-        hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
+        tp->hwoptimize |= HW_PATCH_SAMSUNG_LAN_DONGLE;
 #endif //CONFIG_CTAP_SHORT_OFF
 
-        if (hwoptimize & HW_PATCH_SAMSUNG_LAN_DONGLE) {
+        if (tp->hwoptimize & HW_PATCH_SAMSUNG_LAN_DONGLE) {
                 switch (tp->mcfg) {
                 case CFG_METHOD_14:
                 case CFG_METHOD_15:
@@ -26919,7 +26940,7 @@ err1:
 #ifdef ENABLE_LIB_SUPPORT
                 tp->EnableRss = 1;
 #else
-                u8 rss_queue_num = netif_get_num_default_rss_queues();
+                u16 rss_queue_num = netif_get_num_default_rss_queues();
                 tp->num_rx_rings = (tp->HwSuppNumRxQueues > rss_queue_num)?
                                    rss_queue_num : tp->HwSuppNumRxQueues;
                 if (tp->num_rx_rings >= 2)
@@ -26952,12 +26973,12 @@ err1:
 
         rtl8168_get_hw_wol(dev);
 
-        rtl8168_link_option((u8*)&autoneg_mode, (u32*)&speed_mode, (u8*)&duplex_mode, (u32*)&advertising_mode);
+        rtl8168_link_option(tp);
 
-        tp->autoneg = autoneg_mode;
-        tp->speed = speed_mode;
-        tp->duplex = duplex_mode;
-        tp->advertising = advertising_mode;
+        tp->autoneg = tp->autoneg_mode;
+        tp->speed = tp->speed_mode;
+        tp->duplex = tp->duplex_mode;
+        tp->advertising = tp->advertising_mode;
         tp->fcpause = rtl8168_fc_full;
 
         tp->max_jumbo_frame_size = rtl_chip_info[tp->chipset].jumbo_frame_sz;
@@ -26970,7 +26991,6 @@ err1:
         if (rtl8168_support_eee(tp)) {
                 struct ethtool_keee *eee = &tp->eee;
 
-                eee->eee_enabled = eee_enable;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0)
                 eee->supported  = SUPPORTED_100baseT_Full |
                                   SUPPORTED_1000baseT_Full;
@@ -26981,7 +27001,7 @@ err1:
                 linkmode_set_bit(ETHTOOL_LINK_MODE_100baseT_Full_BIT, eee->advertised);
                 linkmode_set_bit(ETHTOOL_LINK_MODE_1000baseT_Full_BIT, eee->advertised);
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(6,9,0) */
-                eee->tx_lpi_enabled = eee_enable;
+                eee->tx_lpi_enabled = tp->eee.eee_enabled;
                 eee->tx_lpi_timer = dev->mtu + ETH_HLEN + 0x20;
         }
 
@@ -28145,8 +28165,10 @@ rtl8168_init_board(struct pci_dev *pdev,
         tp->pci_dev = pdev;
         tp->msg_enable = netif_msg_init(debug.msg_enable, R8168_MSG_DEFAULT);
 
+        rtl8168_init_module_params(tp);
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,26)
-        if (aspm && tp->mcfg != CFG_METHOD_9)
+        if (tp->aspm && tp->mcfg != CFG_METHOD_9)
                 pci_disable_link_state(pdev, PCIE_LINK_STATE_L0S);
         else
                 pci_disable_link_state(pdev, PCIE_LINK_STATE_L0S | PCIE_LINK_STATE_L1 |
@@ -28216,7 +28238,7 @@ rtl8168_init_board(struct pci_dev *pdev,
         }
 
         if ((sizeof(dma_addr_t) > 4) &&
-            use_dac &&
+            tp->use_dac &&
             !dma_set_mask(&pdev->dev, DMA_BIT_MASK(64)) &&
             !dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64))) {
                 dev->features |= NETIF_F_HIGHDMA;
@@ -28643,12 +28665,46 @@ static int rtl8168_get_irq(struct pci_dev *pdev)
 #endif
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0)
+static netdev_features_t rtl8168_features_check(struct sk_buff *skb,
+                struct net_device *dev,
+                netdev_features_t features)
+{
+        struct rtl8168_private *tp = netdev_priv(dev);
+
+        switch (tp->mcfg) {
+        case CFG_METHOD_1:
+        case CFG_METHOD_2:
+        case CFG_METHOD_3:
+                return features;
+        default:
+                break;
+        }
+
+        if (skb_is_gso(skb)) {
+                if (skb_transport_offset(skb) > GTTCPHO_MAX)
+                        features &= ~NETIF_F_ALL_TSO;
+        } else if (skb->ip_summed == CHECKSUM_PARTIAL) {
+                if (skb_transport_offset(skb) > TCPHO_MAX)
+                        features &= ~NETIF_F_CSUM_MASK;
+        }
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
+        features = vlan_features_check(skb, features);
+#endif //LINUX_VERSION_CODE >= KERNEL_VERSION(4,1,0)
+
+        return features;
+}
+#endif //LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0)
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,29)
 static const struct net_device_ops rtl8168_netdev_ops = {
         .ndo_open       = rtl8168_open,
         .ndo_stop       = rtl8168_close,
         .ndo_get_stats      = rtl8168_get_stats,
         .ndo_start_xmit     = rtl8168_start_xmit,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0)
+        .ndo_features_check = rtl8168_features_check,
+#endif //LINUX_VERSION_CODE >= KERNEL_VERSION(3,14,0)
         .ndo_tx_timeout     = rtl8168_tx_timeout,
         .ndo_change_mtu     = rtl8168_change_mtu,
         .ndo_set_mac_address    = rtl8168_set_mac_address,
@@ -29009,8 +29065,6 @@ rtl8168_remove_one(struct pci_dev *pdev)
 
         set_bit(R8168_FLAG_DOWN, tp->task_flags);
 
-        rtl8168_cancel_all_schedule_work(tp);
-
         if (HW_DASH_SUPPORT_DASH(tp))
                 rtl8168_driver_stop(tp);
 
@@ -29038,6 +29092,8 @@ rtl8168_remove_one(struct pci_dev *pdev)
 #endif //ENABLE_R8168_SYSFS
 
         unregister_netdev(dev);
+
+        rtl8168_cancel_all_schedule_work(tp);
 #ifdef  CONFIG_R8168_NAPI
         rtl8168_del_napi(tp);
 #endif
@@ -29358,7 +29414,7 @@ rtl8168_dsm(struct net_device *dev, int dev_state)
 {
         struct rtl8168_private *tp = netdev_priv(dev);
 
-        if (!(tp->mcfg == CFG_METHOD_5) || (tp->mcfg == CFG_METHOD_6))
+        if (tp->mcfg != CFG_METHOD_5 && tp->mcfg != CFG_METHOD_6)
                 return;
 
         switch (dev_state) {
@@ -29424,7 +29480,7 @@ _rtl8168_set_mrrs(struct rtl8168_private *tp, u8 setting)
 static void
 rtl8168_set_mrrs(struct rtl8168_private *tp)
 {
-        if (hwoptimize & HW_PATCH_SOC_LAN)
+        if (tp->hwoptimize & HW_PATCH_SOC_LAN)
                 return;
 
         switch (tp->mcfg) {
@@ -29834,7 +29890,7 @@ rtl8168_hw_config(struct net_device *dev)
                 RTL_W8(tp, TDFNR, 0x8);
 
                 /*
-                if (aspm)
+                if (tp->aspm)
                 RTL_W8(tp, 0xF1, RTL_R8(tp, 0xF1) | BIT_7);
                 */
 
@@ -29899,7 +29955,7 @@ rtl8168_hw_config(struct net_device *dev)
                 rtl8168_eri_write(tp, 0xDC, 1, csi_tmp, ERIAR_ExGMAC);
 
                 /*
-                if (aspm)
+                if (tp->aspm)
                 RTL_W8(tp, 0xF1, RTL_R8(tp, 0xF1) | BIT_7);
                 */
 
@@ -29935,7 +29991,7 @@ rtl8168_hw_config(struct net_device *dev)
                 rtl8168_eri_write(tp, 0xDC, 1, csi_tmp, ERIAR_ExGMAC);
 
                 /*
-                if (aspm)
+                if (tp->aspm)
                 RTL_W8(tp, 0xF1, RTL_R8(tp, 0xF1) | BIT_7);
                 */
 
@@ -30036,7 +30092,7 @@ rtl8168_hw_config(struct net_device *dev)
                 RTL_W8(tp, Config2, RTL_R8(tp, Config2) & ~PMSTS_En);
 
                 /*
-                if (aspm)
+                if (tp->aspm)
                 RTL_W8(tp, 0xF1, RTL_R8(tp, 0xF1) | BIT_7);
                 */
 
@@ -30129,7 +30185,7 @@ rtl8168_hw_config(struct net_device *dev)
                 RTL_W8(tp, TDFNR, 0x4);
 
                 /*
-                if (aspm)
+                if (tp->aspm)
                 RTL_W8(tp, 0xF1, RTL_R8(tp, 0xF1) | BIT_7);
                 */
 
@@ -30226,7 +30282,7 @@ rtl8168_hw_config(struct net_device *dev)
                 RTL_W8(tp, Config2, RTL_R8(tp, Config2) & ~PMSTS_En);
 
                 /*
-                if (aspm)
+                if (tp->aspm)
                 RTL_W8(tp, 0xF1, RTL_R8(tp, 0xF1) | BIT_7);
                 */
 
@@ -30425,7 +30481,7 @@ rtl8168_hw_config(struct net_device *dev)
         case CFG_METHOD_35:
         case CFG_METHOD_36:
         case CFG_METHOD_37:
-                if (aspm && (tp->org_pci_offset_99 & (BIT_2 | BIT_5 | BIT_6)))
+                if (tp->aspm && (tp->org_pci_offset_99 & (BIT_2 | BIT_5 | BIT_6)))
                         rtl8168_init_pci_offset_99(tp);
                 else
                         rtl8168_disable_pci_offset_99(tp);
@@ -30447,7 +30503,7 @@ rtl8168_hw_config(struct net_device *dev)
         case CFG_METHOD_35:
         case CFG_METHOD_36:
         case CFG_METHOD_37:
-                if (aspm && (tp->org_pci_offset_180 & (BIT_0|BIT_1)))
+                if (tp->aspm && (tp->org_pci_offset_180 & (BIT_0|BIT_1)))
                         rtl8168_init_pci_offset_180(tp);
                 else
                         rtl8168_disable_pci_offset_180(tp);
@@ -31480,9 +31536,9 @@ rtl8168_start_xmit(struct sk_buff *skb,
         struct TxDesc *txd;
         dma_addr_t mapping;
         u32 len;
-        u32 opts[2];
+        u32 opts[2] = { 0 };
         netdev_tx_t ret = NETDEV_TX_OK;
-        unsigned long large_send;
+        unsigned long large_send = 0;
         int frags;
         const u16 queue_mapping = skb_get_queue_mapping(skb);
         struct rtl8168_tx_ring *ring;
@@ -31679,9 +31735,11 @@ err_dma_0:
         ret = NETDEV_TX_OK;
         goto out;
 err_stop:
-        netif_tx_disable(dev);
+        netif_stop_subqueue(dev, queue_mapping);
+        smp_mb();
+        if (rtl8168_tx_slots_avail(tp, ring))
+                netif_start_subqueue(dev, queue_mapping);
         ret = NETDEV_TX_BUSY;
-        RTLDEV->stats.tx_dropped++;
         goto out;
 }
 
@@ -32417,14 +32475,14 @@ static void rtl8168_shutdown(struct pci_dev *pdev)
         }
 
         rtl8168_set_bios_setting(dev);
-        if (s5_keep_curr_mac == 0 && tp->random_mac == 0)
+        if (tp->s5_keep_curr_mac == 0 && tp->random_mac == 0)
                 rtl8168_rar_set(tp, tp->org_mac_addr);
 
 #ifdef ENABLE_FIBER_SUPPORT
         rtl8168_hw_fiber_nic_d3_para(tp);
 #endif  //ENABLE_FIBER_SUPPORT
 
-        if (s5wol == 0)
+        if (tp->s5wol == 0)
                 tp->wol_enabled = WOL_DISABLED;
 
         rtl8168_close(dev);

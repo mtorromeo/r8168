@@ -32,6 +32,9 @@
  *  US6,570,884, US6,115,776, and US6,327,625.
  ***********************************************************************************/
 
+#ifndef R8168_H
+#define R8168_H
+
 #include <linux/ethtool.h>
 #include <linux/interrupt.h>
 #include <linux/version.h>
@@ -348,6 +351,13 @@ do { \
 
 #if !defined(HAVE_FREE_NETDEV) && (LINUX_VERSION_CODE < KERNEL_VERSION(3,1,0))
 #define free_netdev(x)  kfree(x)
+#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
+#define RTL_NAPI_DEL(priv)
+#else
+#define RTL_NAPI_DEL(priv)   netif_napi_del(&priv->napi)
+#endif //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
+#else
+#define RTL_NAPI_DEL(priv)
 #endif
 
 #ifndef SET_NETDEV_DEV
@@ -512,12 +522,12 @@ do { \
 #define RSS_SUFFIX ""
 #endif
 
-#define RTL8168_VERSION "8.056.02" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX RSS_SUFFIX
+#define RTL8168_VERSION "8.057.00" NAPI_SUFFIX FIBER_SUFFIX REALWOW_SUFFIX DASH_SUFFIX RSS_SUFFIX
 #define MODULENAME "r8168"
 #define PFX MODULENAME ": "
 
 #define GPL_CLAIM "\
-r8168  Copyright (C) 2025 Realtek NIC software team <nicfae@realtek.com> \n \
+r8168  Copyright (C) 2026 Realtek NIC software team <nicfae@realtek.com> \n \
 This program comes with ABSOLUTELY NO WARRANTY; for details, please see <http://www.gnu.org/licenses/>. \n \
 This is free software, and you are welcome to redistribute it under certain conditions; see <http://www.gnu.org/licenses/>. \n"
 
@@ -612,7 +622,7 @@ This is free software, and you are welcome to redistribute it under certain cond
 #define NUM_TX_DESC 1024    /* Number of Tx descriptor registers */
 #define NUM_RX_DESC 1024    /* Number of Rx descriptor registers */
 
-#define RX_BUF_SIZE 0x05F2  /* 0x05F2 = 1522bye */
+#define RX_BUF_SIZE 0x05F2  /* 0x05F2 = 1522 bytes */
 #define R8168_MAX_TX_QUEUES (2)
 #define R8168_MAX_RX_QUEUES (4)
 #define R8168_MAX_QUEUES R8168_MAX_RX_QUEUES
@@ -695,7 +705,7 @@ This is free software, and you are welcome to redistribute it under certain cond
 #endif
 
 #ifndef WRITE_ONCE
-#define WRITE_ONCE(var, val) (*((volatile typeof(val) *)(&(var))) = (val))
+#define WRITE_ONCE(var, val) (*((volatile typeof(var) *)(&(var))) = (val))
 #endif
 #ifndef READ_ONCE
 #define READ_ONCE(var) (*((volatile typeof(var) *)(&(var))))
@@ -784,12 +794,6 @@ typedef int napi_budget;
 #define RTL_NAPI_ENABLE(dev, napi)          napi_enable(napi)
 #define RTL_NAPI_DISABLE(dev, napi)         napi_disable(napi)
 #endif  //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24)
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
-#define RTL_NAPI_DEL(priv)
-#else
-#define RTL_NAPI_DEL(priv)   netif_napi_del(&priv->napi)
-#endif //LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
 
 /*****************************************************************************/
 #ifdef CONFIG_R8168_NAPI
@@ -1753,7 +1757,7 @@ enum r8168_dash_req_flag {
         R8168_RCV_REQ_DASH_OK,
         R8168_SEND_REQ_HOST_OK,
         R8168_CMAC_RESET,
-        R8168_CMAC_DISALE_RX_FLAG_MAX,
+        R8168_CMAC_DISABLE_RX_FLAG_MAX,
         R8168_DASH_REQ_FLAG_MAX
 };
 
@@ -1786,7 +1790,7 @@ struct rtl8168_tx_ring {
         void* priv;
         struct net_device *netdev;
         u32 index;
-        u32 cur_tx; /* Index into the Tx descriptor buffer of next Rx pkt. */
+        u32 cur_tx; /* Index into the Tx descriptor buffer of next Tx pkt. */
         u32 dirty_tx;
         u32 num_tx_desc; /* Number of Tx descriptor registers */
         u32 tdu; /* Tx descriptor unavailable count */
@@ -2082,6 +2086,23 @@ struct rtl8168_private {
         u16 cur_page;
         u32 bios_setting;
 
+        /* module_param per-instance storage */
+        int use_dac;
+        int timer_count;
+        int dynamic_aspm_packet_threshold;
+        unsigned int speed_mode;
+        unsigned int duplex_mode;
+        unsigned int autoneg_mode;
+        unsigned int advertising_mode;
+        int aspm;
+        int dynamic_aspm;
+        int s5wol;
+        int s5_keep_curr_mac;
+        int s0_magic_packet;
+        int disable_wol_support;
+        int enable_giga_lite;
+        ulong hwoptimize;
+
         int (*set_speed)(struct net_device *, u8 autoneg, u32 speed, u8 duplex, u32 adv);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0)
         void (*get_settings)(struct net_device *, struct ethtool_cmd *);
@@ -2320,7 +2341,7 @@ static inline bool
 rtl8168_lib_tx_ring_released(struct rtl8168_private *tp)
 {
         int i;
-        bool released = 0;
+        bool released = false;
 
         for (i = tp->num_tx_rings; i < tp->HwSuppNumTxQueues; i++) {
                 struct rtl8168_ring *ring = &tp->lib_tx_ring[i];
@@ -2328,7 +2349,7 @@ rtl8168_lib_tx_ring_released(struct rtl8168_private *tp)
                         goto exit;
         }
 
-        released = 1;
+        released = true;
 
 exit:
         return released;
@@ -2338,7 +2359,7 @@ static inline bool
 rtl8168_lib_rx_ring_released(struct rtl8168_private *tp)
 {
         int i;
-        bool released = 0;
+        bool released = false;
 
         for (i = 1; i < tp->HwSuppNumRxQueues; i++) {
                 struct rtl8168_ring *ring = &tp->lib_rx_ring[i];
@@ -2346,7 +2367,7 @@ rtl8168_lib_rx_ring_released(struct rtl8168_private *tp)
                         goto exit;
         }
 
-        released = 1;
+        released = true;
 
 exit:
         return released;
@@ -2369,13 +2390,13 @@ rtl8168_num_lib_rx_rings(struct rtl8168_private *tp)
 static inline bool
 rtl8168_lib_tx_ring_released(struct rtl8168_private *tp)
 {
-        return 1;
+        return true;
 }
 
 static inline bool
 rtl8168_lib_rx_ring_released(struct rtl8168_private *tp)
 {
-        return 1;
+        return true;
 }
 #endif
 
@@ -2642,4 +2663,6 @@ static inline void rtl8168_lib_reset_complete(struct rtl8168_private *tp) { }
 #define netdev_mc_empty(dev) (netdev_mc_count(dev) == 0)
 #define netdev_for_each_mc_addr(mclist, dev) \
     for (mclist = dev->mc_list; mclist; mclist = mclist->next)
-#endif
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) */
+
+#endif /* R8168_H */

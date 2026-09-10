@@ -32,8 +32,8 @@
  *  US6,570,884, US6,115,776, and US6,327,625.
  ***********************************************************************************/
 
-#ifndef _LINUX_R8168_FIBER_H
-#define _LINUX_R8168_FIBER_H
+#ifndef R8168_FIBER_H
+#define R8168_FIBER_H
 
 enum {
         FIBER_MODE_NIC_ONLY = 0,
@@ -72,4 +72,4 @@ void rtl8168_check_fiber_link_status(struct rtl8168_private *tp);
 void rtl8168_check_hw_fiber_mode_support(struct rtl8168_private *tp);
 void rtl8168_set_fiber_mode_software_variable(struct rtl8168_private *tp);
 
-#endif /* _LINUX_R8168_FIBER_H */
+#endif /* R8168_FIBER_H */
